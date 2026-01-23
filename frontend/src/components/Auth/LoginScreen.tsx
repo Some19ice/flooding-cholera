@@ -60,7 +60,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             Cholera Environmental Surveillance System
           </h1>
           <p className="text-sm sm:text-base text-gray-600 font-medium">
-            Cross River State Ministry of Health
+            National Space Research and Development Agency (NASRDA)
           </p>
           <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-500">
             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -274,7 +274,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         {/* Footer */}
         <div className="mt-6 text-center">
           <p className="text-xs text-gray-500">
-            Powered by Cross River State Health Informatics Division
+            Powered by National Space Research and Development Agency (NASRDA)
           </p>
           <p className="text-xs text-gray-400 mt-1">
             © {new Date().getFullYear()} All rights reserved

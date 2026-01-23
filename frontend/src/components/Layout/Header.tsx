@@ -35,7 +35,7 @@ export default function Header() {
                   Cholera Surveillance
                 </h1>
                 <p className="text-xs text-gray-500 hidden sm:block">
-                  Cross River State, Nigeria
+                  National Space Research and Development Agency (NASRDA)
                 </p>
               </div>
             </div>
