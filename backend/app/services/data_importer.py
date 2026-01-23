@@ -1,0 +1,360 @@
+"""Data importer for Excel/CSV cholera and environmental data."""
+import logging
+from datetime import datetime, date
+from typing import Dict, Any, List, Optional
+import pandas as pd
+from sqlalchemy.orm import Session
+
+from app.models import LGA, Ward, CaseReport, EnvironmentalData
+
+logger = logging.getLogger(__name__)
+
+
+class DataImporter:
+    """Import and validate data from Excel/CSV files."""
+
+    def __init__(self, db: Session):
+        self.db = db
+        self._lga_cache: Dict[str, int] = {}
+        self._build_lga_cache()
+
+    def _build_lga_cache(self):
+        """Build cache of LGA name to ID mapping."""
+        lgas = self.db.query(LGA).all()
+        for lga in lgas:
+            # Store both exact and lowercase for matching
+            self._lga_cache[lga.name.lower()] = lga.id
+            self._lga_cache[lga.name.lower().replace(" ", "")] = lga.id
+
+    def _find_lga_id(self, lga_name: str) -> Optional[int]:
+        """Find LGA ID from name with fuzzy matching."""
+        if not lga_name:
+            return None
+
+        name_lower = str(lga_name).lower().strip()
+
+        # Direct match
+        if name_lower in self._lga_cache:
+            return self._lga_cache[name_lower]
+
+        # Try without spaces
+        name_no_spaces = name_lower.replace(" ", "")
+        if name_no_spaces in self._lga_cache:
+            return self._lga_cache[name_no_spaces]
+
+        # Try partial match
+        for cached_name, lga_id in self._lga_cache.items():
+            if name_lower in cached_name or cached_name in name_lower:
+                return lga_id
+
+        return None
+
+    def _parse_date(self, value: Any) -> Optional[date]:
+        """Parse various date formats."""
+        if value is None or pd.isna(value):
+            return None
+
+        if isinstance(value, (datetime, date)):
+            return value.date() if isinstance(value, datetime) else value
+
+        if isinstance(value, str):
+            # Try common formats
+            formats = [
+                "%Y-%m-%d",
+                "%d/%m/%Y",
+                "%m/%d/%Y",
+                "%d-%m-%Y",
+                "%Y/%m/%d"
+            ]
+            for fmt in formats:
+                try:
+                    return datetime.strptime(value.strip(), fmt).date()
+                except ValueError:
+                    continue
+
+        return None
+
+    def _safe_int(self, value: Any, default: int = 0) -> int:
+        """Safely convert value to integer."""
+        if value is None or pd.isna(value):
+            return default
+        try:
+            return int(float(value))
+        except (ValueError, TypeError):
+            return default
+
+    def _safe_float(self, value: Any, default: float = None) -> Optional[float]:
+        """Safely convert value to float."""
+        if value is None or pd.isna(value):
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+
+    def import_case_data(
+        self,
+        df: pd.DataFrame,
+        source_file: str = None
+    ) -> Dict[str, Any]:
+        """
+        Import cholera case data from DataFrame.
+
+        Expected columns:
+        - lga_name or lga (required)
+        - report_date or date (required)
+        - new_cases or cases (required)
+        - deaths (optional)
+        - suspected_cases (optional)
+        - confirmed_cases (optional)
+        - ward_name or ward (optional)
+        """
+        records_imported = 0
+        records_failed = 0
+        errors = []
+
+        # Normalize column names
+        df.columns = [col.lower().strip().replace(" ", "_") for col in df.columns]
+
+        # Find LGA column
+        lga_col = None
+        for col in ["lga_name", "lga", "local_government", "local_govt"]:
+            if col in df.columns:
+                lga_col = col
+                break
+
+        if not lga_col:
+            errors.append("No LGA column found (expected: lga_name, lga, or local_government)")
+            return {"records_imported": 0, "records_failed": len(df), "errors": errors}
+
+        # Find date column
+        date_col = None
+        for col in ["report_date", "date", "week_ending", "epi_week_end"]:
+            if col in df.columns:
+                date_col = col
+                break
+
+        if not date_col:
+            errors.append("No date column found (expected: report_date, date, or week_ending)")
+            return {"records_imported": 0, "records_failed": len(df), "errors": errors}
+
+        # Find cases column
+        cases_col = None
+        for col in ["new_cases", "cases", "total_cases", "cholera_cases"]:
+            if col in df.columns:
+                cases_col = col
+                break
+
+        if not cases_col:
+            errors.append("No cases column found (expected: new_cases, cases, or total_cases)")
+            return {"records_imported": 0, "records_failed": len(df), "errors": errors}
+
+        # Process rows
+        for idx, row in df.iterrows():
+            try:
+                lga_name = row[lga_col]
+                lga_id = self._find_lga_id(lga_name)
+
+                if not lga_id:
+                    errors.append(f"Row {idx + 2}: Unknown LGA '{lga_name}'")
+                    records_failed += 1
+                    continue
+
+                report_date = self._parse_date(row[date_col])
+                if not report_date:
+                    errors.append(f"Row {idx + 2}: Invalid date '{row[date_col]}'")
+                    records_failed += 1
+                    continue
+
+                new_cases = self._safe_int(row[cases_col])
+
+                # Check for existing record
+                existing = self.db.query(CaseReport).filter(
+                    CaseReport.lga_id == lga_id,
+                    CaseReport.report_date == report_date
+                ).first()
+
+                if existing:
+                    # Update existing
+                    existing.new_cases = new_cases
+                    existing.deaths = self._safe_int(row.get("deaths", 0))
+                    existing.suspected_cases = self._safe_int(row.get("suspected_cases", 0))
+                    existing.confirmed_cases = self._safe_int(row.get("confirmed_cases", 0))
+                    existing.recoveries = self._safe_int(row.get("recoveries", 0))
+                else:
+                    # Create new record
+                    case_report = CaseReport(
+                        lga_id=lga_id,
+                        report_date=report_date,
+                        new_cases=new_cases,
+                        deaths=self._safe_int(row.get("deaths", 0)),
+                        suspected_cases=self._safe_int(row.get("suspected_cases", 0)),
+                        confirmed_cases=self._safe_int(row.get("confirmed_cases", 0)),
+                        recoveries=self._safe_int(row.get("recoveries", 0)),
+                        cases_under_5=self._safe_int(row.get("cases_under_5", 0)),
+                        cases_5_to_14=self._safe_int(row.get("cases_5_to_14", 0)),
+                        cases_15_plus=self._safe_int(row.get("cases_15_plus", 0)),
+                        cases_male=self._safe_int(row.get("cases_male", 0)),
+                        cases_female=self._safe_int(row.get("cases_female", 0)),
+                        source="uploaded",
+                        source_file=source_file
+                    )
+                    self.db.add(case_report)
+
+                records_imported += 1
+
+            except Exception as e:
+                errors.append(f"Row {idx + 2}: {str(e)}")
+                records_failed += 1
+                continue
+
+        self.db.commit()
+
+        return {
+            "records_imported": records_imported,
+            "records_failed": records_failed,
+            "errors": errors[:20]  # Limit errors returned
+        }
+
+    def import_environmental_data(
+        self,
+        df: pd.DataFrame,
+        source_file: str = None
+    ) -> Dict[str, Any]:
+        """
+        Import environmental data from DataFrame.
+
+        Expected columns:
+        - lga_name or lga (required)
+        - observation_date or date (required)
+        - rainfall_mm (optional)
+        - ndwi (optional)
+        - flood_observed (optional)
+        """
+        records_imported = 0
+        records_failed = 0
+        errors = []
+
+        # Normalize column names
+        df.columns = [col.lower().strip().replace(" ", "_") for col in df.columns]
+
+        # Find LGA column
+        lga_col = None
+        for col in ["lga_name", "lga", "local_government"]:
+            if col in df.columns:
+                lga_col = col
+                break
+
+        if not lga_col:
+            errors.append("No LGA column found")
+            return {"records_imported": 0, "records_failed": len(df), "errors": errors}
+
+        # Find date column
+        date_col = None
+        for col in ["observation_date", "date", "obs_date"]:
+            if col in df.columns:
+                date_col = col
+                break
+
+        if not date_col:
+            errors.append("No date column found")
+            return {"records_imported": 0, "records_failed": len(df), "errors": errors}
+
+        # Process rows
+        for idx, row in df.iterrows():
+            try:
+                lga_name = row[lga_col]
+                lga_id = self._find_lga_id(lga_name)
+
+                if not lga_id:
+                    errors.append(f"Row {idx + 2}: Unknown LGA '{lga_name}'")
+                    records_failed += 1
+                    continue
+
+                obs_date = self._parse_date(row[date_col])
+                if not obs_date:
+                    errors.append(f"Row {idx + 2}: Invalid date")
+                    records_failed += 1
+                    continue
+
+                # Check for existing record
+                existing = self.db.query(EnvironmentalData).filter(
+                    EnvironmentalData.lga_id == lga_id,
+                    EnvironmentalData.observation_date == obs_date
+                ).first()
+
+                if existing:
+                    # Update existing
+                    if "rainfall_mm" in df.columns:
+                        existing.rainfall_mm = self._safe_float(row.get("rainfall_mm"))
+                    if "ndwi" in df.columns:
+                        existing.ndwi = self._safe_float(row.get("ndwi"))
+                    if "flood_observed" in df.columns:
+                        existing.flood_observed = bool(row.get("flood_observed"))
+                else:
+                    # Create new record
+                    env_data = EnvironmentalData(
+                        lga_id=lga_id,
+                        observation_date=obs_date,
+                        rainfall_mm=self._safe_float(row.get("rainfall_mm")),
+                        ndwi=self._safe_float(row.get("ndwi")),
+                        flood_observed=bool(row.get("flood_observed", False)),
+                        flood_extent_pct=self._safe_float(row.get("flood_extent_pct")),
+                        lst_day=self._safe_float(row.get("lst_day")),
+                        lst_night=self._safe_float(row.get("lst_night")),
+                        data_source="uploaded"
+                    )
+                    self.db.add(env_data)
+
+                records_imported += 1
+
+            except Exception as e:
+                errors.append(f"Row {idx + 2}: {str(e)}")
+                records_failed += 1
+                continue
+
+        self.db.commit()
+
+        return {
+            "records_imported": records_imported,
+            "records_failed": records_failed,
+            "errors": errors[:20]
+        }
+
+    def import_cholera_excel(self, filepath: str) -> Dict[str, Any]:
+        """
+        Import the specific cholera Excel file provided.
+        Handles the structure of 'Copy of Cholera Data for CRS 2021.xlsx'
+        """
+        try:
+            # Read all sheets
+            xl = pd.ExcelFile(filepath)
+            total_imported = 0
+            total_failed = 0
+            all_errors = []
+
+            for sheet_name in xl.sheet_names:
+                df = pd.read_excel(xl, sheet_name=sheet_name)
+
+                if df.empty:
+                    continue
+
+                # Try to import as case data
+                result = self.import_case_data(df, source_file=filepath)
+                total_imported += result["records_imported"]
+                total_failed += result["records_failed"]
+                all_errors.extend(result.get("errors", []))
+
+            return {
+                "records_imported": total_imported,
+                "records_failed": total_failed,
+                "errors": all_errors[:20]
+            }
+
+        except Exception as e:
+            logger.error(f"Error importing Excel file: {e}")
+            return {
+                "records_imported": 0,
+                "records_failed": 0,
+                "errors": [str(e)]
+            }
