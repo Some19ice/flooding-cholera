@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # App settings
     debug: bool = True
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,https://flooding-cholera.vercel.app,https://*.vercel.app"
 
     # Rate limiting
     rate_limit_requests: int = 100  # requests per minute for general endpoints
