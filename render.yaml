@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: flooding-cholera
+    runtime: python
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: CORS_ORIGINS
+        value: http://localhost:5173,http://localhost:3000,https://flooding-cholera.vercel.app
+      - key: DEBUG
+        value: false
+      - key: USE_SQLITE_FALLBACK
+        value: true
