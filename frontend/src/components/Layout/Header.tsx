@@ -2,6 +2,7 @@ import { useAppStore } from '../../store/appStore';
 import { useAuthStore } from '../../store/authStore';
 import LGASearch from '../Search/LGASearch';
 import RefreshControl from '../common/RefreshControl';
+import nasrdaLogo from '../../assets/nasrda-logo.png';
 
 export default function Header() {
   const { sidebarCollapsed, setSidebarCollapsed } = useAppStore();
@@ -24,11 +25,9 @@ export default function Header() {
               </svg>
             </button>
             <div className="min-w-0 flex items-center gap-3">
-               {/* Logo / Icon Placeholder */}
-              <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm hidden sm:block">
-                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                 </svg>
+               {/* NASRDA Logo */}
+              <div className="bg-white text-white p-1 rounded-lg shadow-sm hidden sm:block border border-gray-100">
+                 <img src={nasrdaLogo} alt="NASRDA Logo" className="w-8 h-8 object-contain" />
               </div>
               <div>
                 <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate leading-tight">

@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { UserRole } from '../../store/authStore';
+import nasrdaLogo from '../../assets/nasrda-logo.png';
 
 interface LoginScreenProps {
   onLogin: (email: string, role: UserRole) => void;
@@ -39,21 +40,13 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       <div className="max-w-md w-full">
         {/* Header Section */}
         <div className="text-center mb-8">
-          {/* Nigerian Coat of Arms / Health Logo Placeholder */}
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-600 to-green-700 rounded-full shadow-lg mb-4 border-4 border-white">
-            <svg
-              className="w-10 h-10 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-              />
-            </svg>
+          {/* NASRDA Logo */}
+          <div className="inline-flex items-center justify-center w-24 h-24 bg-white rounded-full shadow-lg mb-4 p-2">
+            <img 
+              src={nasrdaLogo} 
+              alt="NASRDA Logo" 
+              className="w-full h-full object-contain"
+            />
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
