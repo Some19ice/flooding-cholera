@@ -190,11 +190,44 @@ def root():
 @app.get("/health")
 def health_check():
     """Health check endpoint."""
+    from app.models import LGA
+    db = SessionLocal()
+    try:
+        lga_count = db.query(LGA).count()
+    finally:
+        db.close()
     return {
         "status": "healthy",
         "database": "connected",
-        "scheduler": "running" if scheduler.running else "stopped"
+        "scheduler": "running" if scheduler.running else "stopped",
+        "lga_count": lga_count
     }
+
+
+@app.post("/api/seed")
+def trigger_seed():
+    """Manually trigger database seeding (for debugging)."""
+    from app.models import LGA
+    db = SessionLocal()
+    try:
+        lga_count = db.query(LGA).count()
+        if lga_count > 0:
+            return {"status": "skipped", "message": f"Database already has {lga_count} LGAs"}
+        
+        from app.seed_database import seed_lgas, seed_demo_scenario, calculate_initial_risks, seed_demo_alerts
+        seed_lgas()
+        seed_demo_scenario()
+        calculate_initial_risks()
+        seed_demo_alerts()
+        
+        new_count = db.query(LGA).count()
+        return {"status": "success", "message": f"Seeded {new_count} LGAs"}
+    except Exception as e:
+        logger.error(f"Manual seed failed: {e}")
+        import traceback
+        return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}
+    finally:
+        db.close()
 
 
 @app.get("/api/risk-scores")
