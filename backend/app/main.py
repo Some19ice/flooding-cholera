@@ -72,6 +72,28 @@ def scheduled_risk_calculation():
         db.close()
 
 
+def auto_seed_if_empty():
+    """Seed database with demo data if no LGAs exist."""
+    from app.models import LGA
+    db = SessionLocal()
+    try:
+        lga_count = db.query(LGA).count()
+        if lga_count == 0:
+            logger.info("Database is empty, running auto-seed...")
+            from app.seed_database import seed_lgas, seed_demo_scenario, calculate_initial_risks, seed_demo_alerts
+            seed_lgas()
+            seed_demo_scenario()
+            calculate_initial_risks()
+            seed_demo_alerts()
+            logger.info("Auto-seed completed successfully")
+        else:
+            logger.info(f"Database already has {lga_count} LGAs, skipping seed")
+    except Exception as e:
+        logger.error(f"Auto-seed failed: {e}")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown events."""
@@ -81,6 +103,9 @@ async def lifespan(app: FastAPI):
     # Initialize database tables (for development - use Alembic in production)
     init_db()
     logger.info("Database initialized")
+
+    # Auto-seed if database is empty
+    auto_seed_if_empty()
 
     # Start scheduler for periodic tasks
     # Run risk calculation daily at 6 AM
