@@ -2,6 +2,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useAlerts } from '../../hooks/useApi';
 import { useAppStore } from '../../store/appStore';
 import LGADetailPanel from '../LGADetail/LGADetailPanel';
+import LGASearchBar from '../Search/LGASearchBar';
 import type { TabId } from '../../App';
 
 interface MainLayoutProps {
@@ -106,15 +107,8 @@ export default function MainLayout({ activeTab, onTabChange, children }: MainLay
           </div>
           <div className="flex items-center gap-4">
             {/* Search */}
-            <div className="relative group hidden md:block">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-[#637588]">
-                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>search</span>
-              </div>
-              <input
-                className="block w-64 rounded-lg border-none bg-[#f0f2f5] py-2 pl-10 pr-4 text-sm text-[#111518] placeholder-[#637588] focus:ring-2 focus:ring-primary focus:bg-white transition-all"
-                placeholder="Search LGA, outbreak..."
-                type="text"
-              />
+            <div className="hidden md:block w-72">
+              <LGASearchBar placeholder="Search LGA for report..." />
             </div>
             <div className="h-6 w-px bg-[#e6e8eb] mx-1 hidden md:block"></div>
 
