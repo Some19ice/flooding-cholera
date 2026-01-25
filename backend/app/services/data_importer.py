@@ -324,7 +324,7 @@ class DataImporter:
     def import_line_list_data(
         self,
         df: pd.DataFrame,
-        source_file: str = None
+        source_file: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Import line-list case data (one row per patient).

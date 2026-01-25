@@ -208,6 +208,7 @@ interface FloodLayerProps {
  */
 function FloodLayer({ selectedLGAId }: FloodLayerProps) {
   const [tileUrl, setTileUrl] = React.useState<string | null>(null);
+  const { selectedDate } = useAppStore();
 
   useEffect(() => {
     if (!selectedLGAId) {
@@ -215,24 +216,34 @@ function FloodLayer({ selectedLGAId }: FloodLayerProps) {
       return;
     }
 
+    const controller = new AbortController();
+
     // Fetch tile URL for the selected LGA
     const fetchTiles = async () => {
       try {
-        const response = await fetch(`/api/satellite/tiles/flood/${selectedLGAId}`);
-        if (response.ok) {
+        const dateParam = selectedDate ? `?date=${selectedDate}` : '';
+        const response = await fetch(
+          `/api/satellite/tiles/flood/${selectedLGAId}${dateParam}`,
+          { signal: controller.signal }
+        );
+        if (response.ok && !controller.signal.aborted) {
           const data = await response.json();
           setTileUrl(data.url);
-        } else {
+        } else if (!controller.signal.aborted) {
           setTileUrl(null);
         }
       } catch (error) {
-        console.error("Failed to fetch flood tiles:", error);
-        setTileUrl(null);
+        if (error instanceof Error && error.name !== 'AbortError') {
+          console.error("Failed to fetch flood tiles:", error);
+          setTileUrl(null);
+        }
       }
     };
 
     fetchTiles();
-  }, [selectedLGAId]);
+
+    return () => controller.abort();
+  }, [selectedLGAId, selectedDate]);
 
   if (!tileUrl) return null;
 
@@ -244,9 +255,6 @@ function FloodLayer({ selectedLGAId }: FloodLayerProps) {
     />
   );
 }
-
-import HealthFacilitiesLayer from './HealthFacilitiesLayer';
-import TimeSlider from './TimeSlider';
 
 export default function ChoroplethMap() {
   const { selectedLGAId, setSelectedLGAId, setSelectedLGA, filters, selectedDate } = useAppStore();

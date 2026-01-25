@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Marker, Popup, useMap } from 'react-leaflet';
+import { Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -51,23 +51,35 @@ export default function HealthFacilitiesLayer() {
       .catch(err => console.error("Failed to load facilities:", err));
   }, []);
 
-  if (!visible) return null;
-
   return (
     <>
-      {facilities.map(facility => {
+      {/* Toggle Control (always visible) */}
+      <div className="absolute top-4 left-16 z-[1000] bg-white p-2 rounded shadow flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="showFacilities"
+          checked={visible}
+          onChange={e => setVisible(e.target.checked)}
+        />
+        <label htmlFor="showFacilities" className="text-xs font-semibold cursor-pointer">
+          Health Facilities
+        </label>
+      </div>
+
+      {/* Only render markers when visible */}
+      {visible && facilities.map(facility => {
         // GeoJSON is [lon, lat], Leaflet wants [lat, lon]
         const position: [number, number] = [
           facility.geometry.coordinates[1],
           facility.geometry.coordinates[0]
         ];
-        
-        const isHospital = facility.properties.type && 
+
+        const isHospital = facility.properties.type &&
           (facility.properties.type.includes('hospital') || facility.properties.type.includes('general'));
 
         return (
-          <Marker 
-            key={facility.properties.id} 
+          <Marker
+            key={facility.properties.id}
             position={position}
             icon={isHospital ? hospitalIcon : clinicIcon}
           >
@@ -80,19 +92,6 @@ export default function HealthFacilitiesLayer() {
           </Marker>
         );
       })}
-      
-      {/* Toggle Control (could be moved to a UI panel) */}
-      <div className="absolute top-4 left-16 z-[1000] bg-white p-2 rounded shadow flex items-center gap-2">
-        <input 
-          type="checkbox" 
-          id="showFacilities" 
-          checked={visible} 
-          onChange={e => setVisible(e.target.checked)} 
-        />
-        <label htmlFor="showFacilities" className="text-xs font-semibold cursor-pointer">
-          🏥 Health Facilities
-        </label>
-      </div>
     </>
   );
 }

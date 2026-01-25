@@ -35,7 +35,7 @@ class OSMService:
         """
         
         try:
-            response = requests.post(OVERPASS_URL, data={"data": query})
+            response = requests.post(OVERPASS_URL, data={"data": query}, timeout=30)
             response.raise_for_status()
             data = response.json()
             
@@ -100,7 +100,7 @@ class OSMService:
             r = 6371
             return c * r
 
-        facilities = self.db.query(HealthFacility).filter(HealthFacility.lga_id == None).all()
+        facilities = self.db.query(HealthFacility).filter(HealthFacility.lga_id.is_(None)).all()
         lgas = self.db.query(LGA).all()
         
         updated = 0
@@ -115,9 +115,9 @@ class OSMService:
                         min_dist = dist
                         closest_lga = lga
             
-            # If reasonably close (e.g. within 30km of centroid), assign
+            # If reasonably close (e.g. within 50km of centroid), assign
             # Note: This is a rough approximation. Point-in-Polygon is better but requires shapely.
-            if closest_lga:
+            if closest_lga and min_dist <= 50:
                 fac.lga_id = closest_lga.id
                 updated += 1
         

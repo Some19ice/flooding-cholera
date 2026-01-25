@@ -18,9 +18,12 @@ def get_facilities(db: Session = Depends(get_db)):
 def get_facilities_geojson(db: Session = Depends(get_db)):
     """Get health facilities as GeoJSON FeatureCollection."""
     facilities = db.query(HealthFacility).all()
-    
+
     features = []
     for fac in facilities:
+        # Skip facilities with missing coordinates
+        if fac.latitude is None or fac.longitude is None:
+            continue
         features.append({
             "type": "Feature",
             "geometry": {
@@ -46,8 +49,6 @@ async def fetch_osm_data(
     db: Session = Depends(get_db)
 ):
     """Trigger background fetch of health facilities from OpenStreetMap."""
-    service = OSMService(db)
-    
     def task():
         # Re-instantiate session for background task
         from app.database import SessionLocal

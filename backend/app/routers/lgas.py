@@ -65,7 +65,7 @@ def get_lgas_geojson(
         try:
             target_date = date.fromisoformat(date_str)
         except ValueError:
-            pass
+            raise HTTPException(status_code=400, detail="Invalid date format. Expected YYYY-MM-DD.")
 
     if target_date:
         # Get scores exactly on the target date
@@ -73,14 +73,27 @@ def get_lgas_geojson(
         
         # If no scores found for exact date, try finding nearest prior scores (up to 7 days back)
         if not scores:
-            scores = (
-                db.query(RiskScore)
+            # Use subquery pattern for database compatibility (works on both PostgreSQL and SQLite)
+            subquery = (
+                db.query(
+                    RiskScore.lga_id,
+                    func.max(RiskScore.score_date).label("max_date")
+                )
                 .filter(
                     RiskScore.score_date <= target_date,
                     RiskScore.score_date >= target_date - timedelta(days=7)
                 )
-                .order_by(RiskScore.lga_id, RiskScore.score_date.desc())
-                .distinct(RiskScore.lga_id)
+                .group_by(RiskScore.lga_id)
+                .subquery()
+            )
+
+            scores = (
+                db.query(RiskScore)
+                .join(
+                    subquery,
+                    (RiskScore.lga_id == subquery.c.lga_id) &
+                    (RiskScore.score_date == subquery.c.max_date)
+                )
                 .all()
             )
     else:

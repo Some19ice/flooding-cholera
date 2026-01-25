@@ -1,7 +1,6 @@
 """Health facility models."""
 from sqlalchemy import Column, Integer, String, Float, ForeignKey
 from sqlalchemy.orm import relationship
-from geoalchemy2 import Geometry
 
 from app.database import Base
 

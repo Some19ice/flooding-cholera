@@ -186,13 +186,9 @@ class EarthEngineService:
             after_filtered = after.focal_mean(smoothing_radius, 'circle', 'meters')
 
             # Change Detection
-            # Convert to dB for difference calculation
-            before_db = ee.Image(10.0).multiply(before_filtered.log10())
-            after_db = ee.Image(10.0).multiply(after_filtered.log10())
-
-            # Calculate difference (After - Before)
+            # Note: Sentinel-1 GRD data is already in dB scale, so we compute difference directly
             # Flooded areas show significant decrease in backscatter (negative difference)
-            difference = after_db.subtract(before_db)
+            difference = after_filtered.subtract(before_filtered)
             
             # Thresholding for change detection
             # A drop of > 3dB typically indicates water appearance
@@ -275,12 +271,8 @@ class EarthEngineService:
             after_filtered = after.focal_mean(smoothing_radius, 'circle', 'meters')
 
             # 4. Change Detection
-            # Convert to dB
-            before_db = ee.Image(10.0).multiply(before_filtered.log10())
-            after_db = ee.Image(10.0).multiply(after_filtered.log10())
-
-            # Calculate difference (After - Before)
-            difference = after_db.subtract(before_db)
+            # Note: Sentinel-1 GRD data is already in dB scale, so we compute difference directly
+            difference = after_filtered.subtract(before_filtered)
             
             # Thresholding: Significant drop in backscatter (< -3dB)
             change_threshold = -3.0
