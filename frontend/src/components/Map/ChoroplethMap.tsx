@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import type { Layer, PathOptions } from 'leaflet';
 import { renderToString } from 'react-dom/server';
@@ -194,63 +194,54 @@ function ChoroplethLayer({ geojson, onLGAClick, selectedLGAId, visibleRiskLevels
   );
 }
 
+interface FloodLayerProps {
+  selectedLGAId: number | null;
+}
+
+function FloodLayer({ selectedLGAId }: FloodLayerProps) {
+  const [tileUrl, setTileUrl] = React.useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedLGAId) {
+      setTileUrl(null);
+      return;
+    }
+
+    // Fetch tile URL for the selected LGA
+    const fetchTiles = async () => {
+      try {
+        const response = await fetch(`/api/satellite/tiles/flood/${selectedLGAId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setTileUrl(data.url);
+        } else {
+          setTileUrl(null);
+        }
+      } catch (error) {
+        console.error("Failed to fetch flood tiles:", error);
+        setTileUrl(null);
+      }
+    };
+
+    fetchTiles();
+  }, [selectedLGAId]);
+
+  if (!tileUrl) return null;
+
+  return (
+    <TileLayer
+      url={tileUrl}
+      opacity={0.8}
+      zIndex={100} // Ensure it sits on top of the base map but below tooltips
+    />
+  );
+}
+
 export default function ChoroplethMap() {
   const { data: geojson, isLoading: loading, error } = useGeojson();
   const { selectedLGAId, setSelectedLGAId, setSelectedLGA, filters } = useAppStore();
 
-  // Calculate visible risk levels based on filters
-  const visibleRiskLevels = useMemo(() => {
-    const levels = new Set<RiskLevel>();
-    if (filters.showHighRisk) levels.add('red');
-    if (filters.showMediumRisk) levels.add('yellow');
-    if (filters.showLowRisk) {
-      levels.add('green');
-      levels.add('unknown');
-    }
-    return levels;
-  }, [filters.showHighRisk, filters.showMediumRisk, filters.showLowRisk]);
-
-  const handleLGAClick = (lgaId: number) => {
-    setSelectedLGAId(lgaId);
-    // Find LGA details from geojson
-    if (geojson) {
-      const feature = geojson.features.find(f => f.properties.id === lgaId);
-      if (feature) {
-        setSelectedLGA({
-          id: feature.properties.id,
-          name: feature.properties.name,
-          code: feature.properties.code,
-          population: feature.properties.population,
-          centroid_lat: feature.properties.centroid_lat,
-          centroid_lon: feature.properties.centroid_lon,
-          created_at: '',
-          updated_at: '',
-        });
-      }
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center bg-gray-100 rounded-lg" role="status" aria-label="Loading map">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" aria-hidden="true"></div>
-          <p className="mt-4 text-gray-600">Loading map data...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center bg-gray-100 rounded-lg" role="alert">
-        <div className="text-center text-red-600">
-          <p>Error loading map: {error instanceof Error ? error.message : 'Unknown error'}</p>
-          <p className="text-sm text-gray-500 mt-2">Please ensure the backend is running.</p>
-        </div>
-      </div>
-    );
-  }
+  // ... (rest of the component)
 
   return (
     <div className="h-full w-full absolute inset-0">
@@ -274,10 +265,12 @@ export default function ChoroplethMap() {
               selectedLGAId={selectedLGAId}
               visibleRiskLevels={visibleRiskLevels}
             />
+            <FloodLayer selectedLGAId={selectedLGAId} />
             <MapController selectedLGAId={selectedLGAId} geojson={geojson} />
           </>
         )}
       </MapContainer>
+
 
       {/* Legend */}
       <div

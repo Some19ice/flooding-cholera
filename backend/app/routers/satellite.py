@@ -10,10 +10,59 @@ from app.models import LGA, EnvironmentalData
 from app.services.earth_engine import EarthEngineService
 from app.services.nasa_gpm import NASAGPMService
 from app.rate_limiter import limiter
+import json
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/satellite", tags=["Satellite"])
+
+
+@router.get("/tiles/flood/{lga_id}")
+@limiter.limit("30/minute")
+def get_flood_tiles(
+    request: Request,
+    lga_id: int,
+    date_str: Optional[str] = Query(None, alias="date"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get GEE Tile URL for SAR Flood Extent.
+    Returns { url: "https://...", token: "..." }
+    """
+    gee_service = EarthEngineService()
+    
+    if not gee_service.is_configured():
+        raise HTTPException(status_code=503, detail="GEE not configured")
+        
+    lga = db.query(LGA).filter(LGA.id == lga_id).first()
+    if not lga or not lga.geometry_json:
+        raise HTTPException(status_code=404, detail="LGA or geometry not found")
+        
+    try:
+        geometry = json.loads(lga.geometry_json)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Invalid LGA geometry")
+
+    # Determine date range
+    if date_str:
+        try:
+            target_date = date.fromisoformat(date_str)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format")
+    else:
+        target_date = date.today()
+        
+    # Window: 12 days (Sentinel-1 revisit is 6-12 days)
+    # We look back 12 days from target_date to find an image
+    start_date = target_date - timedelta(days=12)
+    end_date = target_date
+
+    map_data = gee_service.get_sar_flood_mapid(geometry, start_date, end_date)
+    
+    if not map_data:
+        raise HTTPException(status_code=404, detail="No SAR data found for this period")
+        
+    return map_data
 
 
 @router.get("/status")

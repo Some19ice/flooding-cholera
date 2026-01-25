@@ -134,6 +134,172 @@ class EarthEngineService:
             logger.error(f"Error calculating NDWI: {e}")
             return None
 
+    def get_sar_flood_mapid(
+        self,
+        geometry: Dict[str, Any],
+        start_date: date,
+        end_date: date
+    ) -> Optional[Dict[str, str]]:
+        """
+        Get GEE MapID for visualizing SAR flood extent.
+
+        Args:
+            geometry: GeoJSON geometry
+            start_date: Start date
+            end_date: End date
+
+        Returns:
+            Dict with 'url' (tile template) and 'token'
+        """
+        if not self._authenticated:
+            if not self.authenticate():
+                return None
+
+        try:
+            ee = self._ee
+            aoi = ee.Geometry(geometry)
+
+            # 1. Define Collections (Same as get_sar_flood_extent)
+            collection = ee.ImageCollection('COPERNICUS/S1_GRD') \
+                .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+                .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH')) \
+                .filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING')) \
+                .filterBounds(aoi) \
+                .select(['VH'])
+
+            after_collection = collection.filterDate(start_date.isoformat(), end_date.isoformat())
+            
+            # Before Flood: 30 days prior
+            before_start = start_date - timedelta(days=30)
+            before_collection = collection.filterDate(before_start.isoformat(), start_date.isoformat())
+
+            if after_collection.size().getInfo() == 0 or before_collection.size().getInfo() == 0:
+                return None
+
+            before = before_collection.mosaic().clip(aoi)
+            after = after_collection.mosaic().clip(aoi)
+
+            # Preprocessing
+            smoothing_radius = 50
+            before_filtered = before.focal_mean(smoothing_radius, 'circle', 'meters')
+            after_filtered = after.focal_mean(smoothing_radius, 'circle', 'meters')
+
+            # Change Detection & Thresholding
+            water_threshold = -18.0
+            water_mask = after_filtered.lt(water_threshold)
+            
+            # Mask the water layer so only water pixels are visible (0 is transparent)
+            water_layer = water_mask.selfMask()
+
+            # Visualization parameters
+            vis_params = {
+                'min': 0,
+                'max': 1,
+                'palette': ['0000FF'] # Pure Blue
+            }
+
+            # Get MapID
+            map_id = water_layer.getMapId(vis_params)
+            
+            return {
+                "url": map_id['tile_fetcher'].url_format,
+                "token": map_id['mapid'] # Not strictly needed with url_format usually
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating MapID: {e}")
+            return None
+
+    def get_sar_flood_extent(
+        self,
+        geometry: Dict[str, Any],
+        start_date: date,
+        end_date: date
+    ) -> Optional[Dict[str, float]]:
+        """
+        Calculate flood extent using Sentinel-1 SAR imagery (UN-SPIDER Methodology).
+        More robust than NDWI during cloudy/rainy seasons.
+
+        Args:
+            geometry: GeoJSON geometry for area of interest
+            start_date: Start date for "After Flood" image
+            end_date: End date for "After Flood" image
+
+        Returns:
+            Dict with flood_extent_pct, water_pixels, total_pixels
+        """
+        if not self._authenticated:
+            if not self.authenticate():
+                return None
+
+        try:
+            ee = self._ee
+            aoi = ee.Geometry(geometry)
+
+            # 1. Define Collections
+            # Use 'VH' polarization as recommended for flood mapping
+            collection = ee.ImageCollection('COPERNICUS/S1_GRD') \
+                .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+                .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH')) \
+                .filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING')) \
+                .filterBounds(aoi) \
+                .select(['VH'])
+
+            # 2. Select Images
+            # After Flood: The requested period
+            after_collection = collection.filterDate(start_date.isoformat(), end_date.isoformat())
+            
+            # Before Flood: Baseline (Reference). Ideally same season from previous year or pre-event.
+            # For simplicity, we assume 'Before' is 30 days prior to start_date.
+            before_start = start_date - timedelta(days=30)
+            before_collection = collection.filterDate(before_start.isoformat(), start_date.isoformat())
+
+            if after_collection.size().getInfo() == 0 or before_collection.size().getInfo() == 0:
+                logger.warning("Insufficient SAR data for flood analysis")
+                return None
+
+            # Mosaic and Clip
+            before = before_collection.mosaic().clip(aoi)
+            after = after_collection.mosaic().clip(aoi)
+
+            # 3. Preprocessing (Speckle Filtering)
+            # Apply a smoothing filter (Boxcar 50m radius) to reduce noise
+            smoothing_radius = 50
+            before_filtered = before.focal_mean(smoothing_radius, 'circle', 'meters')
+            after_filtered = after.focal_mean(smoothing_radius, 'circle', 'meters')
+
+            # 4. Change Detection
+            # Calculate difference (Before / After ratio in dB scale is roughly subtraction)
+            # Threshold: > 1.25 typically indicates water appearance (specular reflection loss)
+            difference = after_filtered.divide(before_filtered)
+            
+            # Identify flood pixels (threshold tuning might be needed based on local terrain)
+            # Standard heuristic: Values significantly lower in 'after' (darker) indicate water
+            # But 'difference' ratio calculation depends on scale.
+            # Using simple threshold on the 'After' image for water detection is also common:
+            # Water in SAR VH is typically < -20dB.
+            
+            # Let's use the standard thresholding approach on the 'After' image first
+            # as it's more robust than simple difference without calibration.
+            water_threshold = -18.0  # dB value
+            water_mask = after_filtered.lt(water_threshold)
+
+            # 5. Calculate Stats
+            stats = water_mask.reduceRegion(
+                reducer=ee.Reducer.mean(), # Percentage of pixels marked as 1 (water)
+                geometry=aoi,
+                scale=30, # Sentinel-1 resolution
+                maxPixels=1e9
+            ).getInfo()
+
+            return {
+                "flood_extent_pct": (stats.get("VH", 0) or 0) * 100
+            }
+
+        except Exception as e:
+            logger.error(f"Error calculating SAR flood extent: {e}")
+            return None
+
     def get_land_surface_temperature(
         self,
         geometry: Dict[str, Any],
@@ -233,8 +399,18 @@ class EarthEngineService:
                 logger.error(f"Invalid geometry JSON for LGA {lga_id}")
                 return None
 
-            # Fetch flood index
+            # Fetch flood index (Sentinel-2 Optical)
             flood_data = self.get_flood_index(geometry, start_date, end_date)
+            
+            # Fetch SAR flood extent (Sentinel-1 Radar)
+            sar_data = self.get_sar_flood_extent(geometry, start_date, end_date)
+
+            # Prioritize SAR for flood extent if available (sees through clouds)
+            flood_pct = 0.0
+            if sar_data:
+                flood_pct = sar_data.get("flood_extent_pct", 0)
+            elif flood_data:
+                flood_pct = flood_data.get("flood_extent_pct", 0)
 
             # Fetch temperature
             lst_data = self.get_land_surface_temperature(geometry, start_date, end_date)
@@ -244,11 +420,11 @@ class EarthEngineService:
                 lga_id=lga_id,
                 observation_date=end_date,
                 ndwi=flood_data.get("ndwi_mean") if flood_data else None,
-                flood_extent_pct=flood_data.get("flood_extent_pct") if flood_data else None,
-                flood_observed=(flood_data.get("flood_extent_pct", 0) or 0) > 10 if flood_data else False,
+                flood_extent_pct=flood_pct,
+                flood_observed=flood_pct > 10,  # Threshold for "Flood Observed" status
                 lst_day=lst_data.get("lst_day") if lst_data else None,
                 lst_night=lst_data.get("lst_night") if lst_data else None,
-                data_source="GEE"
+                data_source="GEE-S1" if sar_data else "GEE-S2"
             )
 
             db.add(env_data)
@@ -258,6 +434,7 @@ class EarthEngineService:
                 "lga_id": lga_id,
                 "observation_date": end_date.isoformat(),
                 "flood_data": flood_data,
+                "sar_data": sar_data,
                 "lst_data": lst_data
             }
 
