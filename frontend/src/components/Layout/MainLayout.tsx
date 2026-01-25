@@ -1,5 +1,7 @@
 import { useAuthStore } from '../../store/authStore';
 import { useAlerts } from '../../hooks/useApi';
+import { useAppStore } from '../../store/appStore';
+import LGADetailPanel from '../LGADetail/LGADetailPanel';
 import type { TabId } from '../../App';
 
 interface MainLayoutProps {
@@ -18,6 +20,7 @@ interface NavItem {
 export default function MainLayout({ activeTab, onTabChange, children }: MainLayoutProps) {
   const { user, logout } = useAuthStore();
   const { data: alerts } = useAlerts();
+  const { selectedLGAId } = useAppStore();
 
   const criticalAlerts = alerts?.filter(a => a.severity === 'critical').length || 0;
 
@@ -137,6 +140,13 @@ export default function MainLayout({ activeTab, onTabChange, children }: MainLay
           </div>
         </div>
       </main>
+
+      {/* LGA Detail Panel - Right Sidebar */}
+      {selectedLGAId && (
+        <aside className="w-96 flex-shrink-0 overflow-hidden border-l border-[#e6e8eb] bg-white z-20">
+          <LGADetailPanel />
+        </aside>
+      )}
     </div>
   );
 }
