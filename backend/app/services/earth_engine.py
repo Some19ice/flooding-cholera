@@ -142,6 +142,7 @@ class EarthEngineService:
     ) -> Optional[Dict[str, str]]:
         """
         Get GEE MapID for visualizing SAR flood extent.
+        Uses Change Detection (After - Before) to identify flood water.
 
         Args:
             geometry: GeoJSON geometry
@@ -159,7 +160,7 @@ class EarthEngineService:
             ee = self._ee
             aoi = ee.Geometry(geometry)
 
-            # 1. Define Collections (Same as get_sar_flood_extent)
+            # 1. Define Collections
             collection = ee.ImageCollection('COPERNICUS/S1_GRD') \
                 .filter(ee.Filter.eq('instrumentMode', 'IW')) \
                 .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH')) \
@@ -179,14 +180,24 @@ class EarthEngineService:
             before = before_collection.mosaic().clip(aoi)
             after = after_collection.mosaic().clip(aoi)
 
-            # Preprocessing
+            # Preprocessing (Speckle Filtering)
             smoothing_radius = 50
             before_filtered = before.focal_mean(smoothing_radius, 'circle', 'meters')
             after_filtered = after.focal_mean(smoothing_radius, 'circle', 'meters')
 
-            # Change Detection & Thresholding
-            water_threshold = -18.0
-            water_mask = after_filtered.lt(water_threshold)
+            # Change Detection
+            # Convert to dB for difference calculation
+            before_db = ee.Image(10.0).multiply(before_filtered.log10())
+            after_db = ee.Image(10.0).multiply(after_filtered.log10())
+
+            # Calculate difference (After - Before)
+            # Flooded areas show significant decrease in backscatter (negative difference)
+            difference = after_db.subtract(before_db)
+            
+            # Thresholding for change detection
+            # A drop of > 3dB typically indicates water appearance
+            change_threshold = -3.0
+            water_mask = difference.lt(change_threshold)
             
             # Mask the water layer so only water pixels are visible (0 is transparent)
             water_layer = water_mask.selfMask()
@@ -218,7 +229,7 @@ class EarthEngineService:
     ) -> Optional[Dict[str, float]]:
         """
         Calculate flood extent using Sentinel-1 SAR imagery (UN-SPIDER Methodology).
-        More robust than NDWI during cloudy/rainy seasons.
+        Uses Change Detection (After - Before) to identify flood water.
 
         Args:
             geometry: GeoJSON geometry for area of interest
@@ -237,7 +248,6 @@ class EarthEngineService:
             aoi = ee.Geometry(geometry)
 
             # 1. Define Collections
-            # Use 'VH' polarization as recommended for flood mapping
             collection = ee.ImageCollection('COPERNICUS/S1_GRD') \
                 .filter(ee.Filter.eq('instrumentMode', 'IW')) \
                 .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH')) \
@@ -246,11 +256,8 @@ class EarthEngineService:
                 .select(['VH'])
 
             # 2. Select Images
-            # After Flood: The requested period
             after_collection = collection.filterDate(start_date.isoformat(), end_date.isoformat())
             
-            # Before Flood: Baseline (Reference). Ideally same season from previous year or pre-event.
-            # For simplicity, we assume 'Before' is 30 days prior to start_date.
             before_start = start_date - timedelta(days=30)
             before_collection = collection.filterDate(before_start.isoformat(), start_date.isoformat())
 
@@ -263,26 +270,21 @@ class EarthEngineService:
             after = after_collection.mosaic().clip(aoi)
 
             # 3. Preprocessing (Speckle Filtering)
-            # Apply a smoothing filter (Boxcar 50m radius) to reduce noise
             smoothing_radius = 50
             before_filtered = before.focal_mean(smoothing_radius, 'circle', 'meters')
             after_filtered = after.focal_mean(smoothing_radius, 'circle', 'meters')
 
             # 4. Change Detection
-            # Calculate difference (Before / After ratio in dB scale is roughly subtraction)
-            # Threshold: > 1.25 typically indicates water appearance (specular reflection loss)
-            difference = after_filtered.divide(before_filtered)
+            # Convert to dB
+            before_db = ee.Image(10.0).multiply(before_filtered.log10())
+            after_db = ee.Image(10.0).multiply(after_filtered.log10())
+
+            # Calculate difference (After - Before)
+            difference = after_db.subtract(before_db)
             
-            # Identify flood pixels (threshold tuning might be needed based on local terrain)
-            # Standard heuristic: Values significantly lower in 'after' (darker) indicate water
-            # But 'difference' ratio calculation depends on scale.
-            # Using simple threshold on the 'After' image for water detection is also common:
-            # Water in SAR VH is typically < -20dB.
-            
-            # Let's use the standard thresholding approach on the 'After' image first
-            # as it's more robust than simple difference without calibration.
-            water_threshold = -18.0  # dB value
-            water_mask = after_filtered.lt(water_threshold)
+            # Thresholding: Significant drop in backscatter (< -3dB)
+            change_threshold = -3.0
+            water_mask = difference.lt(change_threshold)
 
             # 5. Calculate Stats
             stats = water_mask.reduceRegion(
