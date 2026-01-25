@@ -37,6 +37,7 @@ class LGA(Base):
     case_reports = relationship("CaseReport", back_populates="lga", cascade="all, delete-orphan")
     environmental_data = relationship("EnvironmentalData", back_populates="lga", cascade="all, delete-orphan")
     risk_scores = relationship("RiskScore", back_populates="lga", cascade="all, delete-orphan")
+    facilities = relationship("HealthFacility", back_populates="lga", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<LGA(id={self.id}, name={self.name})>"

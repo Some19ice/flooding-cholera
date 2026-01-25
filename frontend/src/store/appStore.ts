@@ -39,11 +39,15 @@ interface AppState {
   // Sidebar collapsed state
   sidebarCollapsed: boolean;
 
+  // Date for map visualization
+  selectedDate: string | null; // ISO Date String (YYYY-MM-DD)
+
   // Actions
   setLgas: (lgas: LGA[]) => void;
   setGeojson: (geojson: GeoJSONFeatureCollection) => void;
   setSelectedLGA: (lga: LGA | null) => void;
   setSelectedLGAId: (id: number | null) => void;
+  setSelectedDate: (date: string | null) => void;
   setRiskScores: (scores: RiskScore[]) => void;
   setDashboardSummary: (summary: DashboardSummary) => void;
   setSelectedLGAAnalytics: (analytics: LGAAnalytics | null) => void;
@@ -77,6 +81,7 @@ export const useAppStore = create<AppState>()(
       geojson: null,
       selectedLGA: null,
       selectedLGAId: null,
+      selectedDate: null,
       riskScores: [],
       dashboardSummary: null,
       selectedLGAAnalytics: null,
@@ -95,6 +100,7 @@ export const useAppStore = create<AppState>()(
       setGeojson: (geojson) => set({ geojson }),
       setSelectedLGA: (lga) => set({ selectedLGA: lga, selectedLGAId: lga?.id || null }),
       setSelectedLGAId: (id) => set({ selectedLGAId: id }),
+      setSelectedDate: (date) => set({ selectedDate: date }),
       setRiskScores: (scores) => set({ riskScores: scores }),
       setDashboardSummary: (summary) => set({ dashboardSummary: summary }),
       setSelectedLGAAnalytics: (analytics) => set({ selectedLGAAnalytics: analytics }),

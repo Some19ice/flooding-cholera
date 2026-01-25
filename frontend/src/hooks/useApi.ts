@@ -41,8 +41,9 @@ export const apiService = {
     return response.data;
   },
 
-  getLgasGeojson: async (): Promise<GeoJSONFeatureCollection> => {
-    const response = await api.get('/lgas/geojson');
+  getLgasGeojson: async (date?: string): Promise<GeoJSONFeatureCollection> => {
+    const params = date ? { date } : {};
+    const response = await api.get('/lgas/geojson', { params });
     return response.data;
   },
 
@@ -192,10 +193,10 @@ export function useLgas(search?: string) {
   });
 }
 
-export function useGeojson() {
+export function useGeojson(date?: string) {
   return useQuery({
-    queryKey: queryKeys.geojson,
-    queryFn: apiService.getLgasGeojson,
+    queryKey: date ? [...queryKeys.geojson, date] : queryKeys.geojson,
+    queryFn: () => apiService.getLgasGeojson(date),
     staleTime: 5 * 60 * 1000,
   });
 }
