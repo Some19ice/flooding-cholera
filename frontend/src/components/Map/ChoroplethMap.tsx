@@ -198,6 +198,12 @@ interface FloodLayerProps {
   selectedLGAId: number | null;
 }
 
+/**
+ * Layer component that fetches and renders SAR flood tiles from Google Earth Engine.
+ * Overlays a blue tile layer representing water extent on top of the base map.
+ * 
+ * @param selectedLGAId - The ID of the currently selected LGA.
+ */
 function FloodLayer({ selectedLGAId }: FloodLayerProps) {
   const [tileUrl, setTileUrl] = React.useState<string | null>(null);
 

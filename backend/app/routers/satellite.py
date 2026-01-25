@@ -26,8 +26,19 @@ def get_flood_tiles(
     db: Session = Depends(get_db)
 ):
     """
-    Get GEE Tile URL for SAR Flood Extent.
-    Returns { url: "https://...", token: "..." }
+    Get GEE MapID for visualizing SAR flood extent.
+
+    Args:
+        request: The FastAPI request object.
+        lga_id: The ID of the LGA to analyze.
+        date_str: Optional target date (ISO format). Defaults to today.
+        db: Database session.
+
+    Returns:
+        Dict containing 'url' (tile template) and 'token'.
+
+    Raises:
+        HTTPException: If GEE is not configured, LGA not found, or no data available.
     """
     gee_service = EarthEngineService()
     
