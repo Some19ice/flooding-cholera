@@ -46,7 +46,7 @@ export function useChartDataLogic() {
       let rainfall = Math.random() * 30 + 5; // Fallback mock
       if (satelliteData && satelliteData.length > 0) {
         const avgRainfall = satelliteData.reduce((sum, s) => sum + (s.rainfall_mm || 0), 0) / satelliteData.length;
-        rainfall = avgRainfall + (Math.random() - 0.5) * 20;
+        rainfall = Math.max(0, avgRainfall + (Math.random() - 0.5) * 20);
       }
 
       // Generate case data - higher on days with more rainfall (lagged correlation)
