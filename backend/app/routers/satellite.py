@@ -5,7 +5,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape
+from geoalchemy2.exc import ArgumentError
 from shapely.geometry import mapping
+from shapely.errors import ShapelyError
 
 from app.database import get_db
 from app.models import LGA, EnvironmentalData
@@ -42,18 +44,19 @@ def get_flood_tiles(
         HTTPException: If GEE is not configured, LGA not found, or no data available.
     """
     gee_service = EarthEngineService()
-    
+
     if not gee_service.is_configured():
         raise HTTPException(status_code=503, detail="GEE not configured")
-        
+
     lga = db.query(LGA).filter(LGA.id == lga_id).first()
     if not lga or lga.geometry is None:
         raise HTTPException(status_code=404, detail="LGA or geometry not found")
 
     try:
         geometry = mapping(to_shape(lga.geometry))
-    except Exception:
-        raise HTTPException(status_code=500, detail="Invalid LGA geometry")
+    except (ShapelyError, ArgumentError, ValueError) as err:
+        logger.exception("Invalid LGA geometry", extra={"lga_id": lga_id})
+        raise HTTPException(status_code=500, detail="Invalid LGA geometry") from err
 
     # Determine date range
     if date_str:
@@ -63,17 +66,17 @@ def get_flood_tiles(
             raise HTTPException(status_code=400, detail="Invalid date format")
     else:
         target_date = date.today()
-        
+
     # Window: 12 days (Sentinel-1 revisit is 6-12 days)
     # We look back 12 days from target_date to find an image
     start_date = target_date - timedelta(days=12)
     end_date = target_date
 
     map_data = gee_service.get_sar_flood_mapid(geometry, start_date, end_date)
-    
+
     if not map_data:
         raise HTTPException(status_code=404, detail="No SAR data found for this period")
-        
+
     return map_data
 
 
@@ -89,18 +92,19 @@ def get_satellite_thumbnail(
     Get a static thumbnail URL for satellite imagery of an LGA.
     """
     gee_service = EarthEngineService()
-    
+
     if not gee_service.is_configured():
         raise HTTPException(status_code=503, detail="GEE not configured")
-        
+
     lga = db.query(LGA).filter(LGA.id == lga_id).first()
     if not lga or lga.geometry is None:
         raise HTTPException(status_code=404, detail="LGA or geometry not found")
 
     try:
         geometry = mapping(to_shape(lga.geometry))
-    except Exception:
-        raise HTTPException(status_code=500, detail="Invalid LGA geometry")
+    except (ShapelyError, ArgumentError, ValueError) as err:
+        logger.exception("Invalid LGA geometry", extra={"lga_id": lga_id})
+        raise HTTPException(status_code=500, detail="Invalid LGA geometry") from err
 
     # Determine date range
     if date_str:
@@ -110,16 +114,16 @@ def get_satellite_thumbnail(
             raise HTTPException(status_code=400, detail="Invalid date format")
     else:
         target_date = date.today()
-        
+
     # Window: 12 days
     start_date = target_date - timedelta(days=12)
     end_date = target_date
 
     url = gee_service.get_sar_flood_thumbnail(geometry, start_date, end_date)
-    
+
     if not url:
         raise HTTPException(status_code=404, detail="No imagery found for this period")
-        
+
     return {"url": url}
 
 

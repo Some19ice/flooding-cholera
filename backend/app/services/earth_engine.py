@@ -60,8 +60,8 @@ class EarthEngineService:
                 except json.JSONDecodeError:
                     logger.error("Failed to parse GEE_SERVICE_ACCOUNT_JSON")
                     return False
-                except Exception as e:
-                    logger.error(f"Error authenticating with JSON env var: {e}")
+                except Exception:
+                    logger.exception("Error authenticating with JSON env var")
                     # Fall through to try file path if JSON fails? No, probably better to fail explicitly if JSON provided but bad.
                     return False
 
@@ -321,8 +321,8 @@ class EarthEngineService:
 
             return url
 
-        except Exception as e:
-            logger.error(f"Error generating thumbnail: {e}")
+        except Exception:
+            logger.exception("Error generating thumbnail")
             return None
 
     def get_sar_flood_extent(
@@ -499,7 +499,7 @@ class EarthEngineService:
             try:
                 geometry = mapping(to_shape(lga.geometry))
             except Exception:
-                logger.error(f"Invalid geometry for LGA {lga_id}")
+                logger.exception("Invalid geometry for LGA %s", lga_id)
                 return None
 
             # Fetch flood index (Sentinel-2 Optical)

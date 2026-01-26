@@ -2,6 +2,7 @@ import { useDashboard, useRiskScores, useSatelliteThumbnail } from '../../hooks/
 import ChoroplethMap from '../Map/ChoroplethMap';
 import { ErrorBoundary } from '../common/ErrorBoundary';
 import { useMemo } from 'react';
+import clsx from 'clsx';
 
 interface KPICardProps {
   title: string;
@@ -43,9 +44,17 @@ function KPICard({ title, value, icon, iconColor, trend, subtitle }: KPICardProp
 
 function SatelliteThumbnail({ lgaId, name, riskLevel }: { lgaId: number, name: string, riskLevel: 'high' | 'medium' | 'low' }) {
   const { data, isLoading, error } = useSatelliteThumbnail(lgaId);
-  
-  const bgColor = riskLevel === 'high' ? 'bg-red-500' : riskLevel === 'medium' ? 'bg-yellow-500' : 'bg-env-green';
-  const textColor = riskLevel === 'high' ? 'text-red-400' : riskLevel === 'medium' ? 'text-yellow-400' : 'text-env-green';
+
+  const bgColor = clsx({
+    'bg-red-500': riskLevel === 'high',
+    'bg-yellow-500': riskLevel === 'medium',
+    'bg-env-green': riskLevel === 'low',
+  });
+  const textColor = clsx({
+    'text-red-400': riskLevel === 'high',
+    'text-yellow-400': riskLevel === 'medium',
+    'text-env-green': riskLevel === 'low',
+  });
 
   return (
     <div className="flex flex-col gap-2">
@@ -68,7 +77,7 @@ function SatelliteThumbnail({ lgaId, name, riskLevel }: { lgaId: number, name: s
         ) : (
             <img src={data.url} alt={`Satellite view of ${name}`} className="w-full h-full object-cover" />
         )}
-        
+
         <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur px-2 py-1 rounded text-[10px] text-white z-10 font-medium">
           {name}
         </div>
@@ -80,7 +89,7 @@ function SatelliteThumbnail({ lgaId, name, riskLevel }: { lgaId: number, name: s
 
 function SatelliteFeed() {
   const { data: riskScores } = useRiskScores();
-  
+
   const displayLgas = useMemo(() => {
     if (!riskScores || riskScores.length === 0) {
         // Mock fallback if no data
@@ -88,7 +97,7 @@ function SatelliteFeed() {
             { id: 1, name: 'Calabar South', level: 'high' },
             { id: 6, name: 'Odukpani', level: 'high' },
             { id: 4, name: 'Akamkpa', level: 'medium' }
-        ]; 
+        ];
     }
     // Filter for high/medium risk, or just take top 3 by score
     return [...riskScores]
@@ -109,11 +118,11 @@ function SatelliteFeed() {
       </div>
       <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1">
         {displayLgas.map((lga, idx) => (
-          <SatelliteThumbnail 
-            key={`${lga.id}-${idx}`} 
-            lgaId={lga.id} 
-            name={lga.name} 
-            riskLevel={lga.level as 'high' | 'medium' | 'low'} 
+          <SatelliteThumbnail
+            key={`${lga.id}-${idx}`}
+            lgaId={lga.id}
+            name={lga.name}
+            riskLevel={lga.level as 'high' | 'medium' | 'low'}
           />
         ))}
       </div>

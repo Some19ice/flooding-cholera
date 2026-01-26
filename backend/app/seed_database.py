@@ -29,6 +29,14 @@ from app.models import LGA, CaseReport, EnvironmentalData, RiskScore, Alert
 from app.services.risk_calculator import RiskCalculator
 
 
+def to_postgis_multipolygon(geometry: dict):
+    """Convert GeoJSON geometry to PostGIS MultiPolygon format."""
+    geom_shape = shape(geometry)
+    if geom_shape.geom_type == 'Polygon':
+        geom_shape = MultiPolygon([geom_shape])
+    return from_shape(geom_shape, srid=4326)
+
+
 def create_tables():
     """Create all database tables."""
     print("Creating database tables...")
@@ -88,10 +96,8 @@ def seed_lgas():
                 continue
 
             # Convert GeoJSON geometry to PostGIS format (ensure MultiPolygon)
-            geom_shape = shape(geometry)
-            if geom_shape.geom_type == 'Polygon':
-                geom_shape = MultiPolygon([geom_shape])
-            postgis_geom = from_shape(geom_shape, srid=4326)
+            # Convert GeoJSON geometry to PostGIS format (ensure MultiPolygon)
+            postgis_geom = to_postgis_multipolygon(geometry)
 
             lga = LGA(
                 name=props["name"],
@@ -162,10 +168,8 @@ def seed_lgas_hardcoded(db):
         }
 
         # Convert GeoJSON geometry to PostGIS format (ensure MultiPolygon)
-        geom_shape = shape(geometry)
-        if geom_shape.geom_type == 'Polygon':
-            geom_shape = MultiPolygon([geom_shape])
-        postgis_geom = from_shape(geom_shape, srid=4326)
+        # Convert GeoJSON geometry to PostGIS format (ensure MultiPolygon)
+        postgis_geom = to_postgis_multipolygon(geometry)
 
         lga = LGA(
             name=name,
