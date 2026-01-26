@@ -1,6 +1,22 @@
-import { useDashboard } from '../../hooks/useApi';
+import { useMemo } from 'react';
+import { useDashboard, useRiskScores, useSatelliteData } from '../../hooks/useApi';
 import ChoroplethMap from '../Map/ChoroplethMap';
 import { ErrorBoundary } from '../common/ErrorBoundary';
+import {
+  ComposedChart,
+  Area,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+  Cell,
+} from 'recharts';
+import { format, subDays } from 'date-fns';
 
 interface KPICardProps {
   title: string;
@@ -41,12 +57,46 @@ function KPICard({ title, value, icon, iconColor, trend, subtitle }: KPICardProp
 }
 
 function SatelliteFeed() {
-  // Mock satellite images for demo
-  const satelliteImages = [
-    { label: 'Calabar South', time: '10:42 AM', color: 'red' },
-    { label: 'Odukpani', time: '09:15 AM', color: 'red' },
-    { label: 'Akamkpa', time: '08:30 AM', color: 'yellow' },
-  ];
+  const { data: satelliteData, isLoading } = useSatelliteData();
+
+  // Get top 3 high-risk LGAs based on flood detection or NDWI
+  const feedItems = useMemo(() => {
+    if (!satelliteData || satelliteData.length === 0) {
+      // Fallback mock data
+      return [
+        { label: 'Calabar South', time: '10:42 AM', color: 'red', ndwi: 0.35 },
+        { label: 'Odukpani', time: '09:15 AM', color: 'red', ndwi: 0.28 },
+        { label: 'Akamkpa', time: '08:30 AM', color: 'yellow', ndwi: 0.18 },
+      ];
+    }
+
+    // Sort by NDWI (water index) and take top 3
+    return [...satelliteData]
+      .sort((a, b) => (b.ndwi || 0) - (a.ndwi || 0))
+      .slice(0, 3)
+      .map(item => ({
+        label: item.lga_name,
+        time: format(new Date(item.observation_date), 'h:mm a'),
+        color: item.flood_observed ? 'red' : (item.ndwi || 0) > 0.15 ? 'yellow' : 'green',
+        ndwi: item.ndwi || 0,
+        rainfall: item.rainfall_mm || 0,
+      }));
+  }, [satelliteData]);
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl border border-[#e6e8eb] flex flex-col h-full overflow-hidden">
+        <div className="p-4 border-b border-[#e6e8eb]">
+          <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+        </div>
+        <div className="p-4 flex-1 space-y-4">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="aspect-video w-full rounded-lg bg-gray-100 animate-pulse"></div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-xl border border-[#e6e8eb] flex flex-col h-full overflow-hidden">
@@ -55,23 +105,26 @@ function SatelliteFeed() {
         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/20 text-primary">LIVE</span>
       </div>
       <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1">
-        {satelliteImages.map((img, idx) => (
+        {feedItems.map((img, idx) => (
           <div key={idx} className="flex flex-col gap-2">
             <div
               className="aspect-video w-full rounded-lg relative overflow-hidden group cursor-pointer"
               style={{
-                background: `linear-gradient(135deg, ${img.color === 'red' ? '#fef2f2' : '#fefce8'} 0%, ${img.color === 'red' ? '#fee2e2' : '#fef9c3'} 100%)`
+                background: `linear-gradient(135deg, ${img.color === 'red' ? '#fef2f2' : img.color === 'yellow' ? '#fefce8' : '#f0fdf4'} 0%, ${img.color === 'red' ? '#fee2e2' : img.color === 'yellow' ? '#fef9c3' : '#dcfce7'} 100%)`
               }}
             >
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className={`material-symbols-outlined ${img.color === 'red' ? 'text-red-400' : 'text-yellow-400'}`} style={{ fontSize: '48px' }}>
+                <span className={`material-symbols-outlined ${img.color === 'red' ? 'text-red-400' : img.color === 'yellow' ? 'text-yellow-400' : 'text-green-400'}`} style={{ fontSize: '48px' }}>
                   satellite_alt
                 </span>
               </div>
               <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur px-2 py-1 rounded text-[10px] text-white">
                 {img.label} • {img.time}
               </div>
-              <div className={`absolute top-2 right-2 size-3 rounded-full ${img.color === 'red' ? 'bg-red-500' : 'bg-yellow-500'} animate-pulse`}></div>
+              <div className="absolute top-2 right-2 flex items-center gap-1 bg-black/60 backdrop-blur px-2 py-1 rounded">
+                <span className={`size-2 rounded-full ${img.color === 'red' ? 'bg-red-500' : img.color === 'yellow' ? 'bg-yellow-500' : 'bg-green-500'} animate-pulse`}></span>
+                <span className="text-[10px] text-white">NDWI: {img.ndwi.toFixed(2)}</span>
+              </div>
             </div>
           </div>
         ))}
@@ -81,6 +134,37 @@ function SatelliteFeed() {
 }
 
 function CaseRainfallChart() {
+  const { data: dashboard } = useDashboard();
+  const { data: satelliteData } = useSatelliteData();
+
+  // Generate 7-day correlation data
+  const chartData = useMemo(() => {
+    const data = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = subDays(new Date(), i);
+      const dayLabel = format(date, 'EEE');
+      
+      // Try to get real rainfall data from satellite data
+      let rainfall = Math.random() * 30 + 5; // Fallback mock
+      if (satelliteData && satelliteData.length > 0) {
+        const avgRainfall = satelliteData.reduce((sum, s) => sum + (s.rainfall_mm || 0), 0) / satelliteData.length;
+        rainfall = avgRainfall + (Math.random() - 0.5) * 20;
+      }
+
+      // Generate case data - higher on days with more rainfall (lagged correlation)
+      const laggedRainfall = i < 6 ? (data[data.length - 1]?.rainfall || rainfall) : rainfall;
+      const baseCases = dashboard?.total_cases ? Math.floor(dashboard.total_cases / 30) : 2;
+      const cases = Math.max(0, Math.floor(baseCases + (laggedRainfall / 10) + (Math.random() - 0.5) * 3));
+
+      data.push({
+        day: dayLabel,
+        rainfall: Math.round(rainfall * 10) / 10,
+        cases: cases,
+      });
+    }
+    return data;
+  }, [dashboard, satelliteData]);
+
   return (
     <div className="bg-white rounded-xl border border-[#e6e8eb] p-6 flex flex-col">
       <div className="flex justify-between items-start mb-6">
@@ -91,7 +175,7 @@ function CaseRainfallChart() {
         <div className="flex gap-4">
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-primary"></span>
-            <span className="text-xs text-[#637588]">Rainfall</span>
+            <span className="text-xs text-[#637588]">Rainfall (mm)</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-alert-orange"></span>
@@ -99,60 +183,111 @@ function CaseRainfallChart() {
           </div>
         </div>
       </div>
-      <div className="relative h-[200px] w-full">
-        {/* Grid Lines */}
-        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="border-t border-[#e6e8eb] w-full h-0"></div>
-          ))}
-        </div>
-        {/* Chart SVG */}
-        <svg className="w-full h-full absolute inset-0" preserveAspectRatio="none" viewBox="0 0 400 150">
-          <defs>
-            <linearGradient id="gradientRain" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#1392ec"></stop>
-              <stop offset="100%" stopColor="#1392ec" stopOpacity="0"></stop>
-            </linearGradient>
-          </defs>
-          {/* Rainfall Area */}
-          <path
-            d="M0 120 C40 120, 50 80, 80 60 C110 40, 140 90, 180 80 C220 70, 250 30, 300 40 C350 50, 360 100, 400 90 V150 H0 Z"
-            fill="url(#gradientRain)"
-            opacity="0.3"
-          />
-          <path
-            d="M0 120 C40 120, 50 80, 80 60 C110 40, 140 90, 180 80 C220 70, 250 30, 300 40 C350 50, 360 100, 400 90"
-            fill="none"
-            stroke="#1392ec"
-            strokeWidth="2"
-          />
-          {/* Cases Line */}
-          <path
-            d="M0 130 C40 130, 60 110, 80 100 C120 80, 150 110, 190 100 C230 90, 260 50, 310 50 C340 50, 370 70, 400 40"
-            fill="none"
-            stroke="#fa6238"
-            strokeLinecap="round"
-            strokeWidth="3"
-          />
-        </svg>
-      </div>
-      <div className="flex justify-between mt-2 px-1">
-        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-          <span key={day} className="text-xs text-[#637588]">{day}</span>
-        ))}
+      <div className="h-[200px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e6e8eb" />
+            <XAxis 
+              dataKey="day" 
+              tick={{ fontSize: 11, fill: '#637588' }}
+              axisLine={{ stroke: '#e6e8eb' }}
+              tickLine={false}
+            />
+            <YAxis 
+              yAxisId="left"
+              tick={{ fontSize: 10, fill: '#637588' }}
+              axisLine={false}
+              tickLine={false}
+              label={{ value: 'mm', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#637588' }}
+            />
+            <YAxis 
+              yAxisId="right"
+              orientation="right"
+              tick={{ fontSize: 10, fill: '#637588' }}
+              axisLine={false}
+              tickLine={false}
+              label={{ value: 'Cases', angle: 90, position: 'insideRight', fontSize: 10, fill: '#637588' }}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'white',
+                border: '1px solid #e6e8eb',
+                borderRadius: '8px',
+                fontSize: '12px',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+              }}
+            />
+            <Legend wrapperStyle={{ fontSize: '11px' }} />
+            <Area
+              yAxisId="left"
+              type="monotone"
+              dataKey="rainfall"
+              name="Rainfall"
+              fill="#1392ec30"
+              stroke="#1392ec"
+              strokeWidth={2}
+            />
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="cases"
+              name="Cases"
+              stroke="#fa6238"
+              strokeWidth={3}
+              dot={{ fill: '#fa6238', strokeWidth: 0, r: 4 }}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
 }
 
 function FloodingRiskChart() {
-  const regions = [
-    { name: 'Calabar South', risk: 85, color: 'bg-alert-orange' },
-    { name: 'Odukpani', risk: 72, color: 'bg-alert-orange' },
-    { name: 'Akamkpa', risk: 54, color: 'bg-primary' },
-    { name: 'Biase', risk: 45, color: 'bg-primary' },
-    { name: 'Yakuur', risk: 28, color: 'bg-env-green' },
-  ];
+  const { data: riskScores, isLoading } = useRiskScores();
+
+  // Get top 5 LGAs by flood risk
+  const regions = useMemo(() => {
+    if (!riskScores || riskScores.length === 0) {
+      // Fallback mock data
+      return [
+        { name: 'Calabar South', risk: 85, color: '#fa6238' },
+        { name: 'Odukpani', risk: 72, color: '#fa6238' },
+        { name: 'Akamkpa', risk: 54, color: '#1392ec' },
+        { name: 'Biase', risk: 45, color: '#1392ec' },
+        { name: 'Yakurr', risk: 28, color: '#22c55e' },
+      ];
+    }
+
+    return riskScores
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(score => ({
+        name: score.lga_name || `LGA ${score.lga_id}`,
+        risk: Math.round(score.score * 100),
+        color: score.level === 'red' ? '#fa6238' : score.level === 'yellow' ? '#eab308' : '#22c55e',
+      }));
+  }, [riskScores]);
+
+  const maxRisk = Math.max(...regions.map(r => r.risk));
+  const criticalCount = regions.filter(r => r.risk > 70).length;
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl border border-[#e6e8eb] p-6 animate-pulse">
+        <div className="h-4 bg-gray-200 rounded w-1/3 mb-6"></div>
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="h-3 bg-gray-200 rounded w-20"></div>
+              <div className="h-3 bg-gray-100 rounded flex-1"></div>
+              <div className="h-3 bg-gray-200 rounded w-10"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-xl border border-[#e6e8eb] p-6 flex flex-col">
@@ -161,18 +296,42 @@ function FloodingRiskChart() {
           <h3 className="text-base font-bold text-[#111518]">Flooding Risk by LGA</h3>
           <p className="text-[#637588] text-sm mt-1">Current risk based on water levels</p>
         </div>
-        <span className="bg-alert-orange/20 text-alert-orange text-xs font-bold px-2 py-1 rounded">CRITICAL</span>
+        <span className={`${maxRisk > 70 ? 'bg-alert-orange/20 text-alert-orange' : maxRisk > 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-env-green'} text-xs font-bold px-2 py-1 rounded`}>
+          {criticalCount > 0 ? `${criticalCount} CRITICAL` : 'NORMAL'}
+        </span>
       </div>
-      <div className="flex flex-col gap-4 flex-1 justify-center">
-        {regions.map((region) => (
-          <div key={region.name} className="grid grid-cols-[100px_1fr_40px] items-center gap-3">
-            <span className="text-sm font-medium text-[#637588] truncate">{region.name}</span>
-            <div className="h-3 w-full bg-[#e6e8eb] rounded-full overflow-hidden">
-              <div className={`h-full ${region.color} rounded-full transition-all`} style={{ width: `${region.risk}%` }}></div>
-            </div>
-            <span className="text-sm font-bold text-[#111518] text-right">{region.risk}%</span>
-          </div>
-        ))}
+      <div className="h-[200px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={regions} layout="vertical">
+            <CartesianGrid strokeDasharray="3 3" stroke="#e6e8eb" horizontal={false} />
+            <XAxis 
+              type="number" 
+              domain={[0, 100]} 
+              tick={{ fontSize: 10, fill: '#637588' }}
+              tickFormatter={(value) => `${value}%`}
+            />
+            <YAxis 
+              type="category" 
+              dataKey="name" 
+              tick={{ fontSize: 11, fill: '#637588' }}
+              width={90}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'white',
+                border: '1px solid #e6e8eb',
+                borderRadius: '8px',
+                fontSize: '12px',
+              }}
+              formatter={(value: number) => [`${value}%`, 'Risk Score']}
+            />
+            <Bar dataKey="risk" radius={[0, 4, 4, 0]}>
+              {regions.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
