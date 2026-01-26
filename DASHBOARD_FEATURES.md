@@ -42,3 +42,14 @@ A specialized view for detailed environmental analysis:
 *   **Automated Alerts:** The system generates alerts for high-risk conditions (e.g., "High Flood Risk" or "Case Spike").
 *   **Data Upload:** Facilities for uploading new case reports and environmental data csv files.
 *   **Export:** Capability to export reports and charts for offline analysis.
+## Recent Additions
+
+### Health Facilities Layer
+*   **OSM Integration:** Fetches hospitals and clinics from OpenStreetMap
+*   **Map Markers:** Toggle-able markers showing healthcare facilities
+*   **Popup Details:** Facility name and type on click
+
+### Time-Lapse Mode
+*   **90-Day Slider:** Visualize how risk levels change over time
+*   **Auto-Play:** Animate through historical data at 1 day/second
+*   **Date Selection:** Manual scrubbing to specific dates
