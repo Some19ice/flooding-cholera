@@ -38,11 +38,18 @@ class EarthEngineService:
 
         try:
             import ee
-            credentials = ee.ServiceAccountCredentials(
-                settings.gee_service_account_email,
-                settings.gee_private_key_path
+            from google.oauth2 import service_account
+
+            credentials = service_account.Credentials.from_service_account_file(
+                settings.gee_private_key_path,
+                scopes=['https://www.googleapis.com/auth/earthengine']
             )
-            ee.Initialize(credentials)
+            
+            # Use 'project' parameter to ensure we use the correct project
+            ee.Initialize(
+                credentials=credentials,
+                project=settings.gee_service_account_email.split('@')[0] if settings.gee_service_account_email else None
+            )
             self._authenticated = True
             self._ee = ee
             logger.info("Successfully authenticated with Google Earth Engine")
