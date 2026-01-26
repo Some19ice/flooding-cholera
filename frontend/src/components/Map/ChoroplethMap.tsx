@@ -1,5 +1,7 @@
-import { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
+import HealthFacilitiesLayer from './HealthFacilitiesLayer';
+import TimeSlider from './TimeSlider';
 import type { Layer, PathOptions } from 'leaflet';
 import { renderToString } from 'react-dom/server';
 import type { GeoJSONFeatureCollection, LGAProperties, RiskLevel } from '../../types';
@@ -194,9 +196,69 @@ function ChoroplethLayer({ geojson, onLGAClick, selectedLGAId, visibleRiskLevels
   );
 }
 
+interface FloodLayerProps {
+  selectedLGAId: number | null;
+}
+
+/**
+ * Layer component that fetches and renders SAR flood tiles from Google Earth Engine.
+ * Overlays a blue tile layer representing water extent on top of the base map.
+ * 
+ * @param selectedLGAId - The ID of the currently selected LGA.
+ */
+function FloodLayer({ selectedLGAId }: FloodLayerProps) {
+  const [tileUrl, setTileUrl] = React.useState<string | null>(null);
+  const { selectedDate } = useAppStore();
+
+  useEffect(() => {
+    if (!selectedLGAId) {
+      setTileUrl(null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    // Fetch tile URL for the selected LGA
+    const fetchTiles = async () => {
+      try {
+        const dateParam = selectedDate ? `?date=${selectedDate}` : '';
+        const response = await fetch(
+          `/api/satellite/tiles/flood/${selectedLGAId}${dateParam}`,
+          { signal: controller.signal }
+        );
+        if (response.ok && !controller.signal.aborted) {
+          const data = await response.json();
+          setTileUrl(data.url);
+        } else if (!controller.signal.aborted) {
+          setTileUrl(null);
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name !== 'AbortError') {
+          console.error("Failed to fetch flood tiles:", error);
+          setTileUrl(null);
+        }
+      }
+    };
+
+    fetchTiles();
+
+    return () => controller.abort();
+  }, [selectedLGAId, selectedDate]);
+
+  if (!tileUrl) return null;
+
+  return (
+    <TileLayer
+      url={tileUrl}
+      opacity={0.8}
+      zIndex={100} // Ensure it sits on top of the base map but below tooltips
+    />
+  );
+}
+
 export default function ChoroplethMap() {
-  const { data: geojson, isLoading: loading, error } = useGeojson();
-  const { selectedLGAId, setSelectedLGAId, setSelectedLGA, filters } = useAppStore();
+  const { selectedLGAId, setSelectedLGAId, setSelectedLGA, filters, selectedDate } = useAppStore();
+  const { data: geojson, isLoading: loading, error } = useGeojson(selectedDate || undefined);
 
   // Calculate visible risk levels based on filters
   const visibleRiskLevels = useMemo(() => {
@@ -274,10 +336,14 @@ export default function ChoroplethMap() {
               selectedLGAId={selectedLGAId}
               visibleRiskLevels={visibleRiskLevels}
             />
+            <FloodLayer selectedLGAId={selectedLGAId} />
+            <HealthFacilitiesLayer />
             <MapController selectedLGAId={selectedLGAId} geojson={geojson} />
           </>
         )}
       </MapContainer>
+      
+      <TimeSlider />
 
       {/* Legend */}
       <div

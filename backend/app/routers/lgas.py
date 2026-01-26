@@ -50,29 +50,74 @@ def list_lgas(
 
 @router.get("/geojson", response_model=GeoJSONFeatureCollection)
 @limiter.limit("30/minute")
-def get_lgas_geojson(request: Request, db: Session = Depends(get_db)):
-    """Get all LGAs as GeoJSON FeatureCollection with risk scores."""
-    # Get latest risk scores for each LGA
-    subquery = (
-        db.query(
-            RiskScore.lga_id,
-            func.max(RiskScore.score_date).label("max_date")
-        )
-        .group_by(RiskScore.lga_id)
-        .subquery()
-    )
+def get_lgas_geojson(
+    request: Request, 
+    date_str: Optional[str] = Query(None, alias="date"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all LGAs as GeoJSON FeatureCollection with risk scores.
+    If 'date' is provided (YYYY-MM-DD), returns risk scores for that specific day.
+    Otherwise returns the latest available scores.
+    """
+    target_date = None
+    if date_str:
+        try:
+            target_date = date.fromisoformat(date_str)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Expected YYYY-MM-DD.")
 
-    latest_scores = (
-        db.query(RiskScore)
-        .join(
-            subquery,
-            (RiskScore.lga_id == subquery.c.lga_id) &
-            (RiskScore.score_date == subquery.c.max_date)
-        )
-        .all()
-    )
+    if target_date:
+        # Get scores exactly on the target date
+        scores = db.query(RiskScore).filter(RiskScore.score_date == target_date).all()
+        
+        # If no scores found for exact date, try finding nearest prior scores (up to 7 days back)
+        if not scores:
+            # Use subquery pattern for database compatibility (works on both PostgreSQL and SQLite)
+            subquery = (
+                db.query(
+                    RiskScore.lga_id,
+                    func.max(RiskScore.score_date).label("max_date")
+                )
+                .filter(
+                    RiskScore.score_date <= target_date,
+                    RiskScore.score_date >= target_date - timedelta(days=7)
+                )
+                .group_by(RiskScore.lga_id)
+                .subquery()
+            )
 
-    score_map = {rs.lga_id: rs for rs in latest_scores}
+            scores = (
+                db.query(RiskScore)
+                .join(
+                    subquery,
+                    (RiskScore.lga_id == subquery.c.lga_id) &
+                    (RiskScore.score_date == subquery.c.max_date)
+                )
+                .all()
+            )
+    else:
+        # Get latest risk scores for each LGA
+        subquery = (
+            db.query(
+                RiskScore.lga_id,
+                func.max(RiskScore.score_date).label("max_date")
+            )
+            .group_by(RiskScore.lga_id)
+            .subquery()
+        )
+
+        scores = (
+            db.query(RiskScore)
+            .join(
+                subquery,
+                (RiskScore.lga_id == subquery.c.lga_id) &
+                (RiskScore.score_date == subquery.c.max_date)
+            )
+            .all()
+        )
+
+    score_map = {rs.lga_id: rs for rs in scores} # use scores variable
 
     # Get all LGAs
     lgas = db.query(LGA).all()

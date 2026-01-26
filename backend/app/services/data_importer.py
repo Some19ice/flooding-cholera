@@ -321,6 +321,121 @@ class DataImporter:
             "errors": errors[:20]
         }
 
+    def import_line_list_data(
+        self,
+        df: pd.DataFrame,
+        source_file: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Import line-list case data (one row per patient).
+        Aggregates by LGA and Date.
+        """
+        records_imported = 0
+        records_failed = 0
+        errors = []
+
+        # Normalize columns
+        df.columns = [col.lower().strip().replace("\n", "").replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_") for col in df.columns]
+        
+        # Mapping for the specific Excel file provided
+        # 'Date of Onset\n(dd-mmm-yyyy)' -> 'date_of_onset_dd_mmm_yyyy'
+        
+        lga_col = "lga"
+        date_col = "date_of_onset_dd_mmm_yyyy"
+        outcome_col = "outcome"
+        
+        # Verify columns exist
+        if lga_col not in df.columns or date_col not in df.columns:
+             # Try to find date col if exact name match fails
+            found_date = False
+            for col in df.columns:
+                if "date" in col and "onset" in col:
+                    date_col = col
+                    found_date = True
+                    break
+            
+            if not found_date:
+                return {
+                    "records_imported": 0, 
+                    "records_failed": len(df), 
+                    "errors": ["Line list format not recognized (missing LGA or Onset Date)"]
+                }
+
+        # Process: Group by LGA and Date
+        # First, parse dates and clean LGAs
+        valid_rows = []
+        
+        for idx, row in df.iterrows():
+            try:
+                lga_name = row.get(lga_col)
+                if pd.isna(lga_name): continue
+                
+                lga_id = self._find_lga_id(str(lga_name))
+                if not lga_id:
+                    continue # Skip unknown LGAs
+                
+                # Parse date
+                date_val = row.get(date_col)
+                report_date = self._parse_date(date_val)
+                if not report_date:
+                    continue
+
+                outcome = str(row.get(outcome_col, "")).lower()
+                is_death = "dead" in outcome or "died" in outcome
+                
+                valid_rows.append({
+                    "lga_id": lga_id,
+                    "report_date": report_date,
+                    "is_death": is_death
+                })
+            except Exception:
+                continue
+
+        if not valid_rows:
+             return {"records_imported": 0, "records_failed": len(df), "errors": ["No valid rows extracted"]}
+
+        # Aggregate
+        agg_df = pd.DataFrame(valid_rows)
+        summary = agg_df.groupby(['lga_id', 'report_date']).agg(
+            new_cases=('lga_id', 'count'),
+            deaths=('is_death', 'sum')
+        ).reset_index()
+
+        # Insert Aggregated Data
+        for _, row in summary.iterrows():
+            try:
+                existing = self.db.query(CaseReport).filter(
+                    CaseReport.lga_id == row['lga_id'],
+                    CaseReport.report_date == row['report_date']
+                ).first()
+
+                if existing:
+                    existing.new_cases = int(row['new_cases'])
+                    existing.deaths = int(row['deaths'])
+                else:
+                    report = CaseReport(
+                        lga_id=int(row['lga_id']),
+                        report_date=row['report_date'],
+                        new_cases=int(row['new_cases']),
+                        deaths=int(row['deaths']),
+                        source="line_list_upload",
+                        source_file=source_file
+                    )
+                    self.db.add(report)
+                
+                records_imported += 1
+            except Exception as e:
+                errors.append(str(e))
+                records_failed += 1
+
+        self.db.commit()
+        
+        return {
+            "records_imported": records_imported,
+            "records_failed": len(df) - len(valid_rows), # Rough estimate
+            "errors": errors[:5]
+        }
+
     def import_cholera_excel(self, filepath: str) -> Dict[str, Any]:
         """
         Import the specific cholera Excel file provided.
@@ -339,8 +454,19 @@ class DataImporter:
                 if df.empty:
                     continue
 
-                # Try to import as case data
-                result = self.import_case_data(df, source_file=filepath)
+                # Check if it's a line list (has 'Date of Onset')
+                is_line_list = False
+                for col in df.columns:
+                    if "Date of Onset" in str(col):
+                        is_line_list = True
+                        break
+                
+                if is_line_list:
+                    result = self.import_line_list_data(df, source_file=filepath)
+                else:
+                    # Try import as aggregated case data
+                    result = self.import_case_data(df, source_file=filepath)
+                
                 total_imported += result["records_imported"]
                 total_failed += result["records_failed"]
                 all_errors.extend(result.get("errors", []))
