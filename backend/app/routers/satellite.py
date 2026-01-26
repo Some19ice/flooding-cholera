@@ -27,19 +27,16 @@ def get_flood_tiles(
     db: Session = Depends(get_db)
 ):
     """
-    Get GEE MapID for visualizing SAR flood extent.
-
-    Args:
-        request: The FastAPI request object.
-        lga_id: The ID of the LGA to analyze.
-        date_str: Optional target date (ISO format). Defaults to today.
-        db: Database session.
-
+    Retrieve a Google Earth Engine map ID payload for SAR flood visualization of a specified LGA.
+    
+    Parameters:
+        date_str (Optional[str]): Optional target date in ISO format (YYYY-MM-DD). When provided the service uses a 12-day window ending at this date; when omitted it uses today's date as the window end.
+    
     Returns:
-        Dict containing 'url' (tile template) and 'token'.
-
+        dict: Map data payload for rendering SAR flood tiles (contains fields such as `url` and `token`).
+    
     Raises:
-        HTTPException: If GEE is not configured, LGA not found, or no data available.
+        HTTPException: 503 if Google Earth Engine is not configured; 404 if the LGA or its geometry is not found or if no SAR data is available for the period; 400 if `date_str` is not a valid ISO date; 500 if the LGA geometry cannot be converted.
     """
     gee_service = EarthEngineService()
     
@@ -86,7 +83,16 @@ def get_satellite_thumbnail(
     db: Session = Depends(get_db)
 ):
     """
-    Get a static thumbnail URL for satellite imagery of an LGA.
+    Return a static satellite imagery thumbnail URL for the specified LGA.
+    
+    Retrieves a thumbnail URL covering a 12-day window ending on the provided date (ISO format YYYY-MM-DD) or today if no date is supplied. Raises HTTP exceptions for missing LGA/geometry, invalid date format, missing imagery, or if Google Earth Engine is not configured.
+    
+    Parameters:
+        lga_id (int): Identifier of the LGA to retrieve imagery for.
+        date_str (Optional[str]): Optional target date in ISO format (YYYY-MM-DD). If omitted, uses today's date.
+    
+    Returns:
+        dict: A dictionary with a single key `"url"` whose value is the thumbnail URL string.
     """
     gee_service = EarthEngineService()
     
@@ -126,7 +132,14 @@ def get_satellite_thumbnail(
 @router.get("/status")
 @limiter.limit("60/minute")
 def get_satellite_status(request: Request):
-    """Check status of satellite data services."""
+    """
+    Report configuration and authentication status for available satellite data services.
+    
+    Returns:
+        status (dict): Mapping with keys `google_earth_engine` and `nasa_gpm`. Each value is a dict containing:
+            - `configured` (bool): `true` if the service is configured, `false` otherwise.
+            - `authenticated` (bool): `true` if the service is authenticated, `false` otherwise.
+    """
     gee_service = EarthEngineService()
     nasa_service = NASAGPMService()
 

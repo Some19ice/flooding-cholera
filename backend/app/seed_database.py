@@ -54,7 +54,11 @@ def load_lga_geojson():
 
 
 def seed_lgas():
-    """Seed LGA data from GeoJSON."""
+    """
+    Seed local government area (LGA) records into the database from a GeoJSON file.
+    
+    If the GeoJSON file is unavailable, falls back to a hardcoded LGA seed. For each GeoJSON feature, creates an LGA record (skipping existing LGAs with the same name), derives centroid coordinates, converts the geometry to a PostGIS MultiPolygon with SRID 4326, and populates additional attributes (population, headquarters, randomized water/sanitation coverage, and health facility count) before committing the changes to the database.
+    """
     print("Seeding LGA data...")
     db = SessionLocal()
 
@@ -121,7 +125,16 @@ def seed_lgas():
 
 
 def seed_lgas_hardcoded(db):
-    """Fallback: seed LGAs with hardcoded data (no geometry)."""
+    """
+    Seed the database with a predefined list of LGAs using synthetic geometries and randomized attributes when GeoJSON data is unavailable.
+    
+    Inserts LGA records for a fixed set of Local Government Areas if an LGA with the same name does not already exist. For each added LGA the function:
+    - creates a simple square polygon around the provided centroid and stores it as a PostGIS geometry with SRID 4326,
+    - populates centroid coordinates, population, headquarters, and randomized water/sanitation coverage and health facility count,
+    - adds the record to the session and commits the transaction.
+    
+    Note: This function mutates the database by inserting and committing new LGA records.
+    """
     lgas_data = [
         ("Abi", "CRS-ABI", 173837, "Itigidi", 5.95, 8.15),
         ("Akamkpa", "CRS-AKA", 157928, "Akamkpa", 5.37, 8.45),

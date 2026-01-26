@@ -21,6 +21,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Enable PostGIS extension
+    """
+    Enable PostGIS and apply spatial schema changes: create the health_facilities table, add geometry columns to lgas and wards, and create spatial indexes.
+    
+    Creates the PostGIS extension if missing, adds a new health_facilities table (columns: id, name, type, lga_id, latitude, longitude, location as POINT with SRID 4326) with a foreign key to lgas.id and indexes on id and name, adds a MULTIPOLYGON geometry column (SRID 4326) to lgas and wards, and creates GiST spatial indexes for lgas.geometry, wards.geometry, and health_facilities.location.
+    """
     op.execute('CREATE EXTENSION IF NOT EXISTS postgis')
 
     # Create health_facilities table (was missing from initial migration)
@@ -53,6 +58,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Drop spatial indexes
+    """
+    Revert the PostGIS schema changes applied in the matching upgrade revision.
+    
+    Drops spatial indexes created for facility locations, wards, and lgas; removes the `geometry` columns from `wards` and `lgas`; and drops the `health_facilities` table along with its indexes.
+    """
     op.execute('DROP INDEX IF EXISTS idx_facilities_location')
     op.execute('DROP INDEX IF EXISTS idx_wards_geometry')
     op.execute('DROP INDEX IF EXISTS idx_lgas_geometry')

@@ -57,9 +57,18 @@ def get_lgas_geojson(
     db: Session = Depends(get_db)
 ):
     """
-    Get all LGAs as GeoJSON FeatureCollection with risk scores.
-    If 'date' is provided (YYYY-MM-DD), returns risk scores for that specific day.
-    Otherwise returns the latest available scores.
+    Return all LGAs as a GeoJSON FeatureCollection with associated risk score data.
+    
+    If `date` is provided (YYYY-MM-DD), the endpoint prefers RiskScore rows on that exact date and, if none exist, will use the most recent prior score per LGA up to 7 days before the target date. If `date` is omitted, the latest available RiskScore for each LGA is used. Each feature's properties include: `id`, `name`, `code`, `population`, `centroid_lat`, `centroid_lon`, `risk_score`, `risk_level`, `recent_cases`, and `recent_deaths`. LGA PostGIS geometries are converted to GeoJSON; if conversion fails, the feature uses an empty Polygon geometry.
+    
+    Parameters:
+        date_str (Optional[str]): Date string in `YYYY-MM-DD` format (query parameter alias `date`). When provided, filters risk scores to the specified date or nearest prior scores within 7 days.
+    
+    Returns:
+        GeoJSONFeatureCollection: A GeoJSON FeatureCollection containing one feature per LGA with the properties and geometry described above.
+    
+    Raises:
+        HTTPException: Raised with status 400 if `date_str` is not a valid `YYYY-MM-DD` date.
     """
     target_date = None
     if date_str:
@@ -221,7 +230,18 @@ def get_dashboard_summary(request: Request, db: Session = Depends(get_db)):
 @router.get("/{lga_id}", response_model=LGAWithGeometry)
 @limiter.limit("60/minute")
 def get_lga(request: Request, lga_id: int, db: Session = Depends(get_db)):
-    """Get single LGA by ID with geometry."""
+    """
+    Retrieve an LGA by ID and include its geometry as GeoJSON when available.
+    
+    Parameters:
+        lga_id (int): Identifier of the LGA to retrieve.
+    
+    Returns:
+        LGAWithGeometry: The LGA record with its geometry converted to GeoJSON when present; `geometry` will be None if no geometry exists or conversion fails.
+    
+    Raises:
+        HTTPException: 404 if no LGA with the given `lga_id` exists.
+    """
     lga = db.query(LGA).filter(LGA.id == lga_id).first()
 
     if not lga:
