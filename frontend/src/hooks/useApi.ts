@@ -10,6 +10,7 @@ import type {
   SatelliteStatus,
   SatelliteData,
   Alert,
+  WeeklySummary,
 } from '../types';
 
 const api = axios.create({
@@ -72,6 +73,11 @@ export const apiService = {
 
   getAllRiskScores: async (): Promise<RiskScore[]> => {
     const response = await api.get('/analytics/risk-scores');
+    return response.data;
+  },
+
+  getWeeklySummary: async (weeks: number = 12): Promise<WeeklySummary> => {
+    const response = await api.get('/analytics/summary/weekly', { params: { weeks } });
     return response.data;
   },
 
@@ -230,6 +236,14 @@ export function useRiskScores() {
     queryKey: queryKeys.riskScores,
     queryFn: apiService.getAllRiskScores,
     staleTime: 2 * 60 * 1000,
+  });
+}
+
+export function useWeeklySummary(weeks: number = 12) {
+  return useQuery({
+    queryKey: ['analytics', 'summary', 'weekly', weeks],
+    queryFn: () => apiService.getWeeklySummary(weeks),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

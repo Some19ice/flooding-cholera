@@ -257,6 +257,24 @@ def get_weekly_summary(
         .all()
     )
 
+    # Aggregate environmental data by week
+    env_data = (
+        db.query(
+            func.date_trunc('week', EnvironmentalData.observation_date).label('week'),
+            func.avg(EnvironmentalData.flood_extent_pct).label('avg_flood_extent'),
+            func.avg(EnvironmentalData.rainfall_mm).label('avg_rainfall')
+        )
+        .filter(EnvironmentalData.observation_date >= start_date)
+        .group_by(func.date_trunc('week', EnvironmentalData.observation_date))
+        .all()
+    )
+
+    # Create valid lookup for env stats
+    env_map = {
+        str(row.week): {"flood": row.avg_flood_extent or 0, "rain": row.avg_rainfall or 0}
+        for row in env_data
+    }
+
     return {
         "weeks": weeks,
         "start_date": start_date.isoformat(),
@@ -265,7 +283,9 @@ def get_weekly_summary(
             {
                 "week": w.isoformat() if hasattr(w, 'isoformat') else str(w),
                 "cases": int(c or 0),
-                "deaths": int(d or 0)
+                "deaths": int(d or 0),
+                "flood_extent": env_map.get(str(w), {}).get("flood", 0),
+                "rainfall": env_map.get(str(w), {}).get("rain", 0)
             }
             for w, c, d in cases
         ]

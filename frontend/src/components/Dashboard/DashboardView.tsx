@@ -3,6 +3,7 @@ import ChoroplethMap from '../Map/ChoroplethMap';
 import { ErrorBoundary } from '../common/ErrorBoundary';
 import { useMemo } from 'react';
 import clsx from 'clsx';
+import FloodCholeraChart from './FloodCholeraChart';
 
 interface KPICardProps {
   title: string;
@@ -130,70 +131,7 @@ function SatelliteFeed() {
   );
 }
 
-function CaseRainfallChart() {
-  return (
-    <div className="bg-white rounded-xl border border-[#e6e8eb] p-6 flex flex-col">
-      <div className="flex justify-between items-start mb-6">
-        <div>
-          <h3 className="text-base font-bold text-[#111518]">Case Rate vs. Precipitation</h3>
-          <p className="text-[#637588] text-sm mt-1">Correlation over past 7 days</p>
-        </div>
-        <div className="flex gap-4">
-          <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-primary"></span>
-            <span className="text-xs text-[#637588]">Rainfall</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-alert-orange"></span>
-            <span className="text-xs text-[#637588]">Cases</span>
-          </div>
-        </div>
-      </div>
-      <div className="relative h-[200px] w-full">
-        {/* Grid Lines */}
-        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="border-t border-[#e6e8eb] w-full h-0"></div>
-          ))}
-        </div>
-        {/* Chart SVG */}
-        <svg className="w-full h-full absolute inset-0" preserveAspectRatio="none" viewBox="0 0 400 150">
-          <defs>
-            <linearGradient id="gradientRain" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#1392ec"></stop>
-              <stop offset="100%" stopColor="#1392ec" stopOpacity="0"></stop>
-            </linearGradient>
-          </defs>
-          {/* Rainfall Area */}
-          <path
-            d="M0 120 C40 120, 50 80, 80 60 C110 40, 140 90, 180 80 C220 70, 250 30, 300 40 C350 50, 360 100, 400 90 V150 H0 Z"
-            fill="url(#gradientRain)"
-            opacity="0.3"
-          />
-          <path
-            d="M0 120 C40 120, 50 80, 80 60 C110 40, 140 90, 180 80 C220 70, 250 30, 300 40 C350 50, 360 100, 400 90"
-            fill="none"
-            stroke="#1392ec"
-            strokeWidth="2"
-          />
-          {/* Cases Line */}
-          <path
-            d="M0 130 C40 130, 60 110, 80 100 C120 80, 150 110, 190 100 C230 90, 260 50, 310 50 C340 50, 370 70, 400 40"
-            fill="none"
-            stroke="#fa6238"
-            strokeLinecap="round"
-            strokeWidth="3"
-          />
-        </svg>
-      </div>
-      <div className="flex justify-between mt-2 px-1">
-        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-          <span key={day} className="text-xs text-[#637588]">{day}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
+
 
 function FloodingRiskChart() {
   const regions = [
@@ -309,9 +247,8 @@ export default function DashboardView() {
         </div>
       </div>
 
-      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <CaseRainfallChart />
+        <FloodCholeraChart />
         <FloodingRiskChart />
       </div>
     </div>

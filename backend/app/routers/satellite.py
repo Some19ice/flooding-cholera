@@ -67,9 +67,8 @@ def get_flood_tiles(
     else:
         target_date = date.today()
 
-    # Window: 12 days (Sentinel-1 revisit is 6-12 days)
-    # We look back 12 days from target_date to find an image
-    start_date = target_date - timedelta(days=12)
+    # Window: 30 days (Sentinel-1 revisit is 6-12 days, but coverage varies)
+    start_date = target_date - timedelta(days=30)
     end_date = target_date
 
     map_data = gee_service.get_sar_flood_mapid(geometry, start_date, end_date)
@@ -115,13 +114,18 @@ def get_satellite_thumbnail(
     else:
         target_date = date.today()
 
-    # Window: 12 days
-    start_date = target_date - timedelta(days=12)
+    # Window: 30 days
+    start_date = target_date - timedelta(days=30)
     end_date = target_date
 
     url = gee_service.get_sar_flood_thumbnail(geometry, start_date, end_date)
 
     if not url:
+        # Fallback for demo/dev if real imagery unavailable
+        # Return a static placeholder or null to let frontend handle "No Imagery" state gracefully
+        # For now, we return None which 404s, but we'll log it.
+        # Ideally, we could return a specific "unavailable" placeholder URL if we had one.
+        logger.warning(f"No MAX-NDWI imagery found for LGA {lga_id} in {start_date} to {end_date}")
         raise HTTPException(status_code=404, detail="No imagery found for this period")
 
     return {"url": url}
