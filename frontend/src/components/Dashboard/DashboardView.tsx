@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { useDashboard, useRiskScores, useSatelliteData } from '../../hooks/useApi';
+import { useDashboard } from '../../hooks/useApi';
+import { useSatelliteFeedLogic, useChartDataLogic, useRiskChartLogic } from '../../hooks/useDashboardLogic';
 import ChoroplethMap from '../Map/ChoroplethMap';
 import { ErrorBoundary } from '../common/ErrorBoundary';
 import {
@@ -16,7 +16,7 @@ import {
   Legend,
   Cell,
 } from 'recharts';
-import { format, subDays } from 'date-fns';
+
 
 interface KPICardProps {
   title: string;
@@ -30,7 +30,7 @@ interface KPICardProps {
 function KPICard({ title, value, icon, iconColor, trend, subtitle }: KPICardProps) {
   const bgColor = iconColor === 'primary' ? 'bg-primary/10 text-primary'
     : iconColor === 'orange' ? 'bg-alert-orange/10 text-alert-orange'
-    : 'bg-env-green/10 text-env-green';
+      : 'bg-env-green/10 text-env-green';
 
   return (
     <div className="rounded-xl border border-[#e6e8eb] bg-white p-5 shadow-sm">
@@ -57,31 +57,7 @@ function KPICard({ title, value, icon, iconColor, trend, subtitle }: KPICardProp
 }
 
 function SatelliteFeed() {
-  const { data: satelliteData, isLoading } = useSatelliteData();
-
-  // Get top 3 high-risk LGAs based on flood detection or NDWI
-  const feedItems = useMemo(() => {
-    if (!satelliteData || satelliteData.length === 0) {
-      // Fallback mock data
-      return [
-        { label: 'Calabar South', time: '10:42 AM', color: 'red', ndwi: 0.35 },
-        { label: 'Odukpani', time: '09:15 AM', color: 'red', ndwi: 0.28 },
-        { label: 'Akamkpa', time: '08:30 AM', color: 'yellow', ndwi: 0.18 },
-      ];
-    }
-
-    // Sort by NDWI (water index) and take top 3
-    return [...satelliteData]
-      .sort((a, b) => (b.ndwi || 0) - (a.ndwi || 0))
-      .slice(0, 3)
-      .map(item => ({
-        label: item.lga_name,
-        time: format(new Date(item.observation_date), 'h:mm a'),
-        color: item.flood_observed ? 'red' : (item.ndwi || 0) > 0.15 ? 'yellow' : 'green',
-        ndwi: item.ndwi || 0,
-        rainfall: item.rainfall_mm || 0,
-      }));
-  }, [satelliteData]);
+  const { feedItems, isLoading } = useSatelliteFeedLogic();
 
   if (isLoading) {
     return (
@@ -134,36 +110,7 @@ function SatelliteFeed() {
 }
 
 function CaseRainfallChart() {
-  const { data: dashboard } = useDashboard();
-  const { data: satelliteData } = useSatelliteData();
-
-  // Generate 7-day correlation data
-  const chartData = useMemo(() => {
-    const data = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = subDays(new Date(), i);
-      const dayLabel = format(date, 'EEE');
-      
-      // Try to get real rainfall data from satellite data
-      let rainfall = Math.random() * 30 + 5; // Fallback mock
-      if (satelliteData && satelliteData.length > 0) {
-        const avgRainfall = satelliteData.reduce((sum, s) => sum + (s.rainfall_mm || 0), 0) / satelliteData.length;
-        rainfall = avgRainfall + (Math.random() - 0.5) * 20;
-      }
-
-      // Generate case data - higher on days with more rainfall (lagged correlation)
-      const laggedRainfall = i < 6 ? (data[data.length - 1]?.rainfall || rainfall) : rainfall;
-      const baseCases = dashboard?.total_cases ? Math.floor(dashboard.total_cases / 30) : 2;
-      const cases = Math.max(0, Math.floor(baseCases + (laggedRainfall / 10) + (Math.random() - 0.5) * 3));
-
-      data.push({
-        day: dayLabel,
-        rainfall: Math.round(rainfall * 10) / 10,
-        cases: cases,
-      });
-    }
-    return data;
-  }, [dashboard, satelliteData]);
+  const { chartData } = useChartDataLogic();
 
   return (
     <div className="bg-white rounded-xl border border-[#e6e8eb] p-6 flex flex-col">
@@ -187,20 +134,20 @@ function CaseRainfallChart() {
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e6e8eb" />
-            <XAxis 
-              dataKey="day" 
+            <XAxis
+              dataKey="day"
               tick={{ fontSize: 11, fill: '#637588' }}
               axisLine={{ stroke: '#e6e8eb' }}
               tickLine={false}
             />
-            <YAxis 
+            <YAxis
               yAxisId="left"
               tick={{ fontSize: 10, fill: '#637588' }}
               axisLine={false}
               tickLine={false}
               label={{ value: 'mm', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#637588' }}
             />
-            <YAxis 
+            <YAxis
               yAxisId="right"
               orientation="right"
               tick={{ fontSize: 10, fill: '#637588' }}
@@ -244,33 +191,7 @@ function CaseRainfallChart() {
 }
 
 function FloodingRiskChart() {
-  const { data: riskScores, isLoading } = useRiskScores();
-
-  // Get top 5 LGAs by flood risk
-  const regions = useMemo(() => {
-    if (!riskScores || riskScores.length === 0) {
-      // Fallback mock data
-      return [
-        { name: 'Calabar South', risk: 85, color: '#fa6238' },
-        { name: 'Odukpani', risk: 72, color: '#fa6238' },
-        { name: 'Akamkpa', risk: 54, color: '#1392ec' },
-        { name: 'Biase', risk: 45, color: '#1392ec' },
-        { name: 'Yakurr', risk: 28, color: '#22c55e' },
-      ];
-    }
-
-    return riskScores
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5)
-      .map(score => ({
-        name: score.lga_name || `LGA ${score.lga_id}`,
-        risk: Math.round(score.score * 100),
-        color: score.level === 'red' ? '#fa6238' : score.level === 'yellow' ? '#eab308' : '#22c55e',
-      }));
-  }, [riskScores]);
-
-  const maxRisk = Math.max(...regions.map(r => r.risk));
-  const criticalCount = regions.filter(r => r.risk > 70).length;
+  const { regions, maxRisk, criticalCount, isLoading } = useRiskChartLogic();
 
   if (isLoading) {
     return (
@@ -304,15 +225,15 @@ function FloodingRiskChart() {
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={regions} layout="vertical">
             <CartesianGrid strokeDasharray="3 3" stroke="#e6e8eb" horizontal={false} />
-            <XAxis 
-              type="number" 
-              domain={[0, 100]} 
+            <XAxis
+              type="number"
+              domain={[0, 100]}
               tick={{ fontSize: 10, fill: '#637588' }}
               tickFormatter={(value) => `${value}%`}
             />
-            <YAxis 
-              type="category" 
-              dataKey="name" 
+            <YAxis
+              type="category"
+              dataKey="name"
               tick={{ fontSize: 11, fill: '#637588' }}
               width={90}
             />
@@ -349,7 +270,7 @@ export default function DashboardView() {
   }
 
   const alertLevel = (dashboard?.lgas_high_risk || 0) > 0 ? 'High' :
-                     (dashboard?.lgas_medium_risk || 0) > 0 ? 'Medium' : 'Low';
+    (dashboard?.lgas_medium_risk || 0) > 0 ? 'Medium' : 'Low';
 
   return (
     <div className="flex flex-col gap-6">
@@ -426,3 +347,4 @@ export default function DashboardView() {
     </div>
   );
 }
+
