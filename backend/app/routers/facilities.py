@@ -1,6 +1,6 @@
 """Health facility endpoints."""
 import logging
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from typing import List
 from geoalchemy2.shape import to_shape
@@ -9,6 +9,7 @@ from shapely.geometry import mapping
 from app.database import get_db
 from app.models import HealthFacility
 from app.services.osm_service import OSMService
+from app.rate_limiter import limiter
 
 router = APIRouter(prefix="/api/facilities", tags=["Facilities"])
 logger = logging.getLogger(__name__)
@@ -63,7 +64,9 @@ def get_facilities_geojson(db: Session = Depends(get_db)):
     }
 
 @router.post("/fetch-osm")
+@limiter.limit("2/hour")
 async def fetch_osm_data(
+    request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
@@ -76,6 +79,8 @@ async def fetch_osm_data(
         try:
             svc.fetch_health_facilities()
             svc.assign_facilities_to_lgas()
+        except Exception as e:
+            logger.error(f"OSM fetch failed: {e}")
         finally:
             db_bg.close()
 
