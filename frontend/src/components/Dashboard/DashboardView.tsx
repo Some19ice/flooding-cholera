@@ -1,6 +1,7 @@
-import { useDashboard } from '../../hooks/useApi';
+import { useDashboard, useRiskScores, useSatelliteThumbnail } from '../../hooks/useApi';
 import ChoroplethMap from '../Map/ChoroplethMap';
 import { ErrorBoundary } from '../common/ErrorBoundary';
+import { useMemo } from 'react';
 
 interface KPICardProps {
   title: string;
@@ -40,13 +41,65 @@ function KPICard({ title, value, icon, iconColor, trend, subtitle }: KPICardProp
   );
 }
 
+function SatelliteThumbnail({ lgaId, name, riskLevel }: { lgaId: number, name: string, riskLevel: 'high' | 'medium' | 'low' }) {
+  const { data, isLoading, error } = useSatelliteThumbnail(lgaId);
+  
+  const bgColor = riskLevel === 'high' ? 'bg-red-500' : riskLevel === 'medium' ? 'bg-yellow-500' : 'bg-env-green';
+  const textColor = riskLevel === 'high' ? 'text-red-400' : riskLevel === 'medium' ? 'text-yellow-400' : 'text-env-green';
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div
+        className="aspect-video w-full rounded-lg relative overflow-hidden group cursor-pointer bg-slate-50 border border-slate-100"
+      >
+        {isLoading ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+                <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${textColor}`}></div>
+            </div>
+        ) : error || !data?.url ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-50">
+                <div className="flex flex-col items-center gap-2">
+                    <span className={`material-symbols-outlined ${textColor} opacity-50`} style={{ fontSize: '32px' }}>
+                    satellite_alt
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">Imagery Unavailable</span>
+                </div>
+            </div>
+        ) : (
+            <img src={data.url} alt={`Satellite view of ${name}`} className="w-full h-full object-cover" />
+        )}
+        
+        <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur px-2 py-1 rounded text-[10px] text-white z-10 font-medium">
+          {name}
+        </div>
+        <div className={`absolute top-2 right-2 size-2.5 rounded-full ${bgColor} animate-pulse z-10 ring-2 ring-white/20`}></div>
+      </div>
+    </div>
+  );
+}
+
 function SatelliteFeed() {
-  // Mock satellite images for demo
-  const satelliteImages = [
-    { label: 'Calabar South', time: '10:42 AM', color: 'red' },
-    { label: 'Odukpani', time: '09:15 AM', color: 'red' },
-    { label: 'Akamkpa', time: '08:30 AM', color: 'yellow' },
-  ];
+  const { data: riskScores } = useRiskScores();
+  
+  const displayLgas = useMemo(() => {
+    if (!riskScores || riskScores.length === 0) {
+        // Mock fallback if no data
+        return [
+            { id: 1, name: 'Calabar South', level: 'high' },
+            { id: 6, name: 'Odukpani', level: 'high' },
+            { id: 4, name: 'Akamkpa', level: 'medium' }
+        ]; 
+    }
+    // Filter for high/medium risk, or just take top 3 by score
+    return [...riskScores]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3)
+        .map(score => ({
+            id: score.lga_id,
+            name: score.lga_name || `LGA ${score.lga_id}`,
+            level: (score.level === 'red' ? 'high' : score.level === 'yellow' ? 'medium' : 'low') as 'high' | 'medium' | 'low'
+        }));
+  }, [riskScores]);
 
   return (
     <div className="bg-white rounded-xl border border-[#e6e8eb] flex flex-col h-full overflow-hidden">
@@ -55,25 +108,13 @@ function SatelliteFeed() {
         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/20 text-primary">LIVE</span>
       </div>
       <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1">
-        {satelliteImages.map((img, idx) => (
-          <div key={idx} className="flex flex-col gap-2">
-            <div
-              className="aspect-video w-full rounded-lg relative overflow-hidden group cursor-pointer"
-              style={{
-                background: `linear-gradient(135deg, ${img.color === 'red' ? '#fef2f2' : '#fefce8'} 0%, ${img.color === 'red' ? '#fee2e2' : '#fef9c3'} 100%)`
-              }}
-            >
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className={`material-symbols-outlined ${img.color === 'red' ? 'text-red-400' : 'text-yellow-400'}`} style={{ fontSize: '48px' }}>
-                  satellite_alt
-                </span>
-              </div>
-              <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur px-2 py-1 rounded text-[10px] text-white">
-                {img.label} • {img.time}
-              </div>
-              <div className={`absolute top-2 right-2 size-3 rounded-full ${img.color === 'red' ? 'bg-red-500' : 'bg-yellow-500'} animate-pulse`}></div>
-            </div>
-          </div>
+        {displayLgas.map((lga, idx) => (
+          <SatelliteThumbnail 
+            key={`${lga.id}-${idx}`} 
+            lgaId={lga.id} 
+            name={lga.name} 
+            riskLevel={lga.level as 'high' | 'medium' | 'low'} 
+          />
         ))}
       </div>
     </div>

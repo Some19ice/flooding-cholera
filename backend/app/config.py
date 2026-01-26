@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Google Earth Engine
     gee_service_account_email: Optional[str] = None
     gee_private_key_path: Optional[str] = None
+    gee_service_account_json: Optional[str] = None
 
     # NASA Earthdata
     nasa_earthdata_username: Optional[str] = None

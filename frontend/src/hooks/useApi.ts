@@ -29,6 +29,7 @@ export const queryKeys = {
   riskScores: ['riskScores'] as const,
   satelliteStatus: ['satellite', 'status'] as const,
   satelliteLatest: ['satellite', 'latest'] as const,
+  satelliteThumbnail: (id: number) => ['satellite', 'thumbnail', id] as const,
   alerts: ['alerts'] as const,
 };
 
@@ -107,6 +108,11 @@ export const apiService = {
 
   getLatestSatelliteData: async (): Promise<SatelliteData[]> => {
     const response = await api.get('/satellite/latest');
+    return response.data;
+  },
+
+  getSatelliteThumbnail: async (lgaId: number): Promise<{ url: string }> => {
+    const response = await api.get(`/satellite/thumbnail/${lgaId}`);
     return response.data;
   },
 
@@ -331,5 +337,15 @@ export function useAutoRefresh(intervalMs: number | null) {
     enabled: !!intervalMs,
     refetchInterval: intervalMs || false,
     staleTime: 0,
+  });
+}
+
+export function useSatelliteThumbnail(lgaId: number | null) {
+  return useQuery({
+    queryKey: lgaId ? queryKeys.satelliteThumbnail(lgaId) : ['satellite', 'thumbnail', 'null'],
+    queryFn: () => apiService.getSatelliteThumbnail(lgaId!),
+    enabled: !!lgaId,
+    retry: false,
+    staleTime: 60 * 60 * 1000,
   });
 }

@@ -1,8 +1,11 @@
 """Google Earth Engine integration service."""
 import os
+import json
 import logging
 from datetime import date, timedelta
 from typing import Optional, Dict, Any, List
+
+from google.oauth2.service_account import Credentials
 
 from app.config import get_settings
 
@@ -20,6 +23,9 @@ class EarthEngineService:
 
     def is_configured(self) -> bool:
         """Check if GEE credentials are configured."""
+        if settings.gee_service_account_json:
+            return True
+
         return bool(
             settings.gee_service_account_email and
             settings.gee_private_key_path and
@@ -38,6 +44,28 @@ class EarthEngineService:
 
         try:
             import ee
+
+            if settings.gee_service_account_json:
+                try:
+                    service_account_info = json.loads(settings.gee_service_account_json)
+                    credentials = Credentials.from_service_account_info(
+                        service_account_info,
+                        scopes=['https://www.googleapis.com/auth/earthengine']
+                    )
+                    ee.Initialize(credentials=credentials)
+                    self._authenticated = True
+                    self._ee = ee
+                    logger.info("Successfully authenticated with Google Earth Engine using JSON env var")
+                    return True
+                except json.JSONDecodeError:
+                    logger.error("Failed to parse GEE_SERVICE_ACCOUNT_JSON")
+                    return False
+                except Exception as e:
+                    logger.error(f"Error authenticating with JSON env var: {e}")
+                    # Fall through to try file path if JSON fails? No, probably better to fail explicitly if JSON provided but bad.
+                    return False
+
+            # Legacy file path authentication
             credentials = ee.ServiceAccountCredentials(
                 settings.gee_service_account_email,
                 settings.gee_private_key_path
@@ -169,7 +197,7 @@ class EarthEngineService:
                 .select(['VH'])
 
             after_collection = collection.filterDate(start_date.isoformat(), end_date.isoformat())
-            
+
             # Before Flood: 30 days prior
             before_start = start_date - timedelta(days=30)
             before_collection = collection.filterDate(before_start.isoformat(), start_date.isoformat())
@@ -189,12 +217,12 @@ class EarthEngineService:
             # Note: Sentinel-1 GRD data is already in dB scale, so we compute difference directly
             # Flooded areas show significant decrease in backscatter (negative difference)
             difference = after_filtered.subtract(before_filtered)
-            
+
             # Thresholding for change detection
             # A drop of > 3dB typically indicates water appearance
             change_threshold = -3.0
             water_mask = difference.lt(change_threshold)
-            
+
             # Mask the water layer so only water pixels are visible (0 is transparent)
             water_layer = water_mask.selfMask()
 
@@ -207,7 +235,7 @@ class EarthEngineService:
 
             # Get MapID
             map_id = water_layer.getMapId(vis_params)
-            
+
             return {
                 "url": map_id['tile_fetcher'].url_format,
                 "token": map_id['mapid'] # Not strictly needed with url_format usually
@@ -252,7 +280,7 @@ class EarthEngineService:
                 .select(['VH'])
 
             after_collection = collection.filterDate(start_date.isoformat(), end_date.isoformat())
-            
+
             # Before Flood: 30 days prior
             before_start = start_date - timedelta(days=30)
             before_collection = collection.filterDate(before_start.isoformat(), start_date.isoformat())
@@ -272,25 +300,25 @@ class EarthEngineService:
             difference = after_filtered.subtract(before_filtered)
             change_threshold = -3.0
             water_mask = difference.lt(change_threshold)
-            
+
             # Create Visualization
             # Background: 'After' image (SAR backscatter)
             # VH backscatter typically ranges from -30 to 0 dB
             bg_vis = after_filtered.visualize(min=-25, max=0, palette=['black', 'white'])
-            
+
             # Overlay: Detected Water (Blue)
             water_vis = water_mask.selfMask().visualize(palette=['0000FF'])
-            
+
             # Composite
             composite = bg_vis.blend(water_vis)
-            
+
             # Generate URL
             url = composite.getThumbURL({
                 'dimensions': 400,
                 'region': aoi,
                 'format': 'png'
             })
-            
+
             return url
 
         except Exception as e:
@@ -333,7 +361,7 @@ class EarthEngineService:
 
             # 2. Select Images
             after_collection = collection.filterDate(start_date.isoformat(), end_date.isoformat())
-            
+
             before_start = start_date - timedelta(days=30)
             before_collection = collection.filterDate(before_start.isoformat(), start_date.isoformat())
 
@@ -353,7 +381,7 @@ class EarthEngineService:
             # 4. Change Detection
             # Note: Sentinel-1 GRD data is already in dB scale, so we compute difference directly
             difference = after_filtered.subtract(before_filtered)
-            
+
             # Thresholding: Significant drop in backscatter (< -3dB)
             change_threshold = -3.0
             water_mask = difference.lt(change_threshold)
@@ -476,7 +504,7 @@ class EarthEngineService:
 
             # Fetch flood index (Sentinel-2 Optical)
             flood_data = self.get_flood_index(geometry, start_date, end_date)
-            
+
             # Fetch SAR flood extent (Sentinel-1 Radar)
             sar_data = self.get_sar_flood_extent(geometry, start_date, end_date)
 
