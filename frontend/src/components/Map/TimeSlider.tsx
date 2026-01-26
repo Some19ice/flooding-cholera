@@ -20,7 +20,7 @@ export default function TimeSlider() {
 
   // Auto-play logic
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (isPlaying) {
       interval = setInterval(() => {
         const nextIndex = (dates.indexOf(selectedDate || dates[dates.length - 1]) + 1) % dates.length;
