@@ -1,18 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../store/appStore';
 
 export default function TimeSlider() {
   const { selectedDate, setSelectedDate } = useAppStore();
   const [isPlaying, setIsPlaying] = useState(false);
   
-  // Generate date range (last 90 days)
-  const today = new Date();
-  const dates: string[] = [];
-  for (let i = 90; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    dates.push(d.toISOString().split('T')[0]);
-  }
+  // Generate date range (last 90 days) - memoized to avoid recalculation on every render
+  const dates = useMemo(() => {
+    const today = new Date();
+    return Array.from({ length: 91 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (90 - i));
+      return d.toISOString().split('T')[0];
+    });
+  }, []);
 
   const currentIndex = selectedDate 
     ? dates.indexOf(selectedDate) 
