@@ -20,8 +20,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Enable PostGIS extension
-    op.execute('CREATE EXTENSION IF NOT EXISTS postgis')
+    bind = op.get_bind()
+    is_postgres = bind.dialect.name == 'postgresql'
+
+    # Enable PostGIS extension (Postgres only)
+    if is_postgres:
+        op.execute('CREATE EXTENSION IF NOT EXISTS postgis')
 
     # Create health_facilities table (was missing from initial migration)
     op.create_table(
@@ -46,9 +50,10 @@ def upgrade() -> None:
     op.add_column('wards', sa.Column('geometry', Geometry('MULTIPOLYGON', srid=4326), nullable=True))
 
     # Create spatial indexes for efficient querying
-    op.execute('CREATE INDEX IF NOT EXISTS idx_lgas_geometry ON lgas USING GIST (geometry)')
-    op.execute('CREATE INDEX IF NOT EXISTS idx_wards_geometry ON wards USING GIST (geometry)')
-    op.execute('CREATE INDEX IF NOT EXISTS idx_facilities_location ON health_facilities USING GIST (location)')
+    if is_postgres:
+        op.execute('CREATE INDEX IF NOT EXISTS idx_lgas_geometry ON lgas USING GIST (geometry)')
+        op.execute('CREATE INDEX IF NOT EXISTS idx_wards_geometry ON wards USING GIST (geometry)')
+        op.execute('CREATE INDEX IF NOT EXISTS idx_facilities_location ON health_facilities USING GIST (location)')
 
 
 def downgrade() -> None:

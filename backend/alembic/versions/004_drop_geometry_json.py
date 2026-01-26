@@ -19,6 +19,24 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    # Only run on Postgres
+    if bind.dialect.name != 'postgresql':
+        return
+
+    # Verify migration completeness before dropping legacy columns
+    lga_missing = bind.execute(
+        sa.text("SELECT COUNT(*) FROM lgas WHERE geometry_json IS NOT NULL AND geometry_json <> '' AND geometry IS NULL")
+    ).scalar()
+    ward_missing = bind.execute(
+        sa.text("SELECT COUNT(*) FROM wards WHERE geometry_json IS NOT NULL AND geometry_json <> '' AND geometry IS NULL")
+    ).scalar()
+    
+    if (lga_missing or 0) > 0 or (ward_missing or 0) > 0:
+        raise RuntimeError(
+            f"Refusing to drop geometry_json: {lga_missing} LGAs and {ward_missing} Wards were not migrated to PostGIS geometry."
+        )
+
     # Drop the legacy geometry_json columns now that data is migrated to PostGIS
     op.drop_column('lgas', 'geometry_json')
     op.drop_column('wards', 'geometry_json')

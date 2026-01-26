@@ -19,20 +19,32 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if bind.dialect.name != 'postgresql':
+        return
+
     # Migrate LGA geometries from JSON text to PostGIS geometry
     # ST_GeomFromGeoJSON parses GeoJSON and creates geometry
     # ST_Multi ensures we always get a MULTIPOLYGON
+    # ST_SetSRID ensures coordinate system is 4326
+    # Added guards for valid JSON and correct geometry types
     op.execute("""
         UPDATE lgas
-        SET geometry = ST_Multi(ST_GeomFromGeoJSON(geometry_json))
-        WHERE geometry_json IS NOT NULL AND geometry IS NULL
+        SET geometry = ST_SetSRID(ST_Multi(ST_GeomFromGeoJSON(geometry_json)), 4326)
+        WHERE geometry_json IS NOT NULL 
+          AND geometry_json <> '' 
+          AND geometry IS NULL
+          AND (geometry_json::jsonb->>'type') IN ('Polygon', 'MultiPolygon')
     """)
 
     # Migrate Ward geometries from JSON text to PostGIS geometry
     op.execute("""
         UPDATE wards
-        SET geometry = ST_Multi(ST_GeomFromGeoJSON(geometry_json))
-        WHERE geometry_json IS NOT NULL AND geometry IS NULL
+        SET geometry = ST_SetSRID(ST_Multi(ST_GeomFromGeoJSON(geometry_json)), 4326)
+        WHERE geometry_json IS NOT NULL 
+          AND geometry_json <> '' 
+          AND geometry IS NULL
+          AND (geometry_json::jsonb->>'type') IN ('Polygon', 'MultiPolygon')
     """)
 
     # Migrate facility points from lat/lon to PostGIS Point geometry

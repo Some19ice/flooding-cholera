@@ -1,4 +1,5 @@
 """Health facility endpoints."""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
@@ -10,6 +11,7 @@ from app.models import HealthFacility
 from app.services.osm_service import OSMService
 
 router = APIRouter(prefix="/api/facilities", tags=["Facilities"])
+logger = logging.getLogger(__name__)
 
 @router.get("/")
 def get_facilities(db: Session = Depends(get_db)):
@@ -29,7 +31,11 @@ def get_facilities_geojson(db: Session = Depends(get_db)):
             try:
                 geometry = mapping(to_shape(fac.location))
             except Exception:
-                pass
+                logger.warning(
+                    "Failed to convert facility location to GeoJSON; id=%s",
+                    fac.id,
+                    exc_info=True,
+                )
 
         # Fall back to lat/lon if no PostGIS geometry
         if geometry is None:
