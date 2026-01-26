@@ -44,11 +44,12 @@ class EarthEngineService:
 
         try:
             import ee
+            from google.oauth2 import service_account
 
             if settings.gee_service_account_json:
                 try:
                     service_account_info = json.loads(settings.gee_service_account_json)
-                    credentials = Credentials.from_service_account_info(
+                    credentials = service_account.Credentials.from_service_account_info(
                         service_account_info,
                         scopes=['https://www.googleapis.com/auth/earthengine']
                     )
@@ -58,25 +59,31 @@ class EarthEngineService:
                     logger.info("Successfully authenticated with Google Earth Engine using JSON env var")
                     return True
                 except json.JSONDecodeError:
-                    logger.error("Failed to parse GEE_SERVICE_ACCOUNT_JSON")
+                    logger.exception("Failed to parse GEE_SERVICE_ACCOUNT_JSON")
                     return False
                 except Exception:
                     logger.exception("Error authenticating with JSON env var")
-                    # Fall through to try file path if JSON fails? No, probably better to fail explicitly if JSON provided but bad.
                     return False
 
-            # Legacy file path authentication
-            credentials = ee.ServiceAccountCredentials(
-                settings.gee_service_account_email,
-                settings.gee_private_key_path
+            # Authenticate using key file
+            credentials = service_account.Credentials.from_service_account_file(
+                settings.gee_private_key_path,
+                scopes=['https://www.googleapis.com/auth/earthengine']
             )
-            ee.Initialize(credentials)
+            
+            # Extract project from email if possible, or let GEE infer from creds
+            project = settings.gee_service_account_email.split('@')[0] if settings.gee_service_account_email else None
+            
+            ee.Initialize(
+                credentials=credentials,
+                project=project
+            )
             self._authenticated = True
             self._ee = ee
             logger.info("Successfully authenticated with Google Earth Engine")
             return True
-        except Exception as e:
-            logger.error(f"Failed to authenticate with GEE: {e}")
+        except Exception:
+            logger.exception("Failed to authenticate with GEE")
             return False
 
     def get_flood_index(
