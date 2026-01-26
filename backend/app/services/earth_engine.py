@@ -217,6 +217,86 @@ class EarthEngineService:
             logger.error(f"Error generating MapID: {e}")
             return None
 
+    def get_sar_flood_thumbnail(
+        self,
+        geometry: Dict[str, Any],
+        start_date: date,
+        end_date: date
+    ) -> Optional[str]:
+        """
+        Get a static thumbnail URL for SAR flood visualization.
+        Shows the 'After' SAR image with detected water overlaid in blue.
+
+        Args:
+            geometry: GeoJSON geometry
+            start_date: Start date
+            end_date: End date
+
+        Returns:
+            URL string for the thumbnail image
+        """
+        if not self._authenticated:
+            if not self.authenticate():
+                return None
+
+        try:
+            ee = self._ee
+            aoi = ee.Geometry(geometry)
+
+            # 1. Define Collections
+            collection = ee.ImageCollection('COPERNICUS/S1_GRD') \
+                .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+                .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH')) \
+                .filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING')) \
+                .filterBounds(aoi) \
+                .select(['VH'])
+
+            after_collection = collection.filterDate(start_date.isoformat(), end_date.isoformat())
+            
+            # Before Flood: 30 days prior
+            before_start = start_date - timedelta(days=30)
+            before_collection = collection.filterDate(before_start.isoformat(), start_date.isoformat())
+
+            if after_collection.size().getInfo() == 0 or before_collection.size().getInfo() == 0:
+                return None
+
+            before = before_collection.mosaic().clip(aoi)
+            after = after_collection.mosaic().clip(aoi)
+
+            # Preprocessing (Speckle Filtering)
+            smoothing_radius = 50
+            before_filtered = before.focal_mean(smoothing_radius, 'circle', 'meters')
+            after_filtered = after.focal_mean(smoothing_radius, 'circle', 'meters')
+
+            # Change Detection
+            difference = after_filtered.subtract(before_filtered)
+            change_threshold = -3.0
+            water_mask = difference.lt(change_threshold)
+            
+            # Create Visualization
+            # Background: 'After' image (SAR backscatter)
+            # VH backscatter typically ranges from -30 to 0 dB
+            bg_vis = after_filtered.visualize(min=-25, max=0, palette=['black', 'white'])
+            
+            # Overlay: Detected Water (Blue)
+            water_vis = water_mask.selfMask().visualize(palette=['0000FF'])
+            
+            # Composite
+            composite = bg_vis.blend(water_vis)
+            
+            # Generate URL
+            url = composite.getThumbURL({
+                'dimensions': 400,
+                'region': aoi,
+                'format': 'png'
+            })
+            
+            return url
+
+        except Exception as e:
+            logger.error(f"Error generating thumbnail: {e}")
+            return None
+
     def get_sar_flood_extent(
         self,
         geometry: Dict[str, Any],
@@ -376,21 +456,22 @@ class EarthEngineService:
         """
         from app.database import SessionLocal
         from app.models import LGA, EnvironmentalData
-        import json
+        from geoalchemy2.shape import to_shape
+        from shapely.geometry import mapping
 
         db = SessionLocal()
         try:
             # Get LGA geometry
             lga = db.query(LGA).filter(LGA.id == lga_id).first()
 
-            if not lga or not lga.geometry_json:
+            if not lga or lga.geometry is None:
                 logger.warning(f"LGA {lga_id} not found or has no geometry")
                 return None
 
             try:
-                geometry = json.loads(lga.geometry_json)
-            except json.JSONDecodeError:
-                logger.error(f"Invalid geometry JSON for LGA {lga_id}")
+                geometry = mapping(to_shape(lga.geometry))
+            except Exception:
+                logger.error(f"Invalid geometry for LGA {lga_id}")
                 return None
 
             # Fetch flood index (Sentinel-2 Optical)

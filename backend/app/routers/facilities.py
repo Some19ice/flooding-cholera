@@ -2,6 +2,8 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
+from geoalchemy2.shape import to_shape
+from shapely.geometry import mapping
 
 from app.database import get_db
 from app.models import HealthFacility
@@ -21,15 +23,26 @@ def get_facilities_geojson(db: Session = Depends(get_db)):
 
     features = []
     for fac in facilities:
-        # Skip facilities with missing coordinates
-        if fac.latitude is None or fac.longitude is None:
-            continue
-        features.append({
-            "type": "Feature",
-            "geometry": {
+        # Try to use PostGIS location geometry first
+        geometry = None
+        if fac.location is not None:
+            try:
+                geometry = mapping(to_shape(fac.location))
+            except Exception:
+                pass
+
+        # Fall back to lat/lon if no PostGIS geometry
+        if geometry is None:
+            if fac.latitude is None or fac.longitude is None:
+                continue
+            geometry = {
                 "type": "Point",
                 "coordinates": [fac.longitude, fac.latitude]
-            },
+            }
+
+        features.append({
+            "type": "Feature",
+            "geometry": geometry,
             "properties": {
                 "id": fac.id,
                 "name": fac.name,
@@ -37,7 +50,7 @@ def get_facilities_geojson(db: Session = Depends(get_db)):
                 "lga_id": fac.lga_id
             }
         })
-        
+
     return {
         "type": "FeatureCollection",
         "features": features

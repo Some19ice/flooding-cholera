@@ -15,6 +15,9 @@ from app.config import get_settings
 from app.database import Base
 from app.models import LGA, Ward, CaseReport, EnvironmentalData, RiskScore
 
+# Import GeoAlchemy2 for autogenerate support
+import geoalchemy2
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -29,11 +32,6 @@ target_metadata = Base.metadata
 # Get database URL from settings
 settings = get_settings()
 database_url = settings.database_url
-
-# Handle SQLite fallback
-if database_url.startswith("postgresql"):
-    sqlite_path = os.path.join(os.path.dirname(__file__), "..", "data", "cholera.db")
-    database_url = f"sqlite:///{os.path.abspath(sqlite_path)}"
 
 config.set_main_option("sqlalchemy.url", database_url)
 

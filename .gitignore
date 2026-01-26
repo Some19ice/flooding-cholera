@@ -53,6 +53,9 @@ Thumbs.db
 *-private-key.json
 gee-private-key.json
 
+# Keys and credentials
+keys/
+
 # Logs
 logs/
 *.log

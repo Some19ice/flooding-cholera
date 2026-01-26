@@ -59,7 +59,7 @@ class OSMService:
                 # For demo, we might need a robust spatial join if PostGIS is enabled.
                 # Assuming lga_id can be mapped later or via spatial query.
                 # Here we will try to find nearest LGA centroid if we don't have full polygon intersection logic readily available in python without shapely/geopandas dependency.
-                # Actually, the DB has `geometry_json` (string).
+                # Note: The DB now has PostGIS geometry columns for spatial queries.
                 
                 facility_type = tags.get("amenity") or tags.get("healthcare")
                 

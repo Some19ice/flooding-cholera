@@ -10,7 +10,9 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql://postgres:postgres@localhost:5432/cholera_surveillance"
-    use_sqlite_fallback: bool = True  # Use SQLite if PostgreSQL unavailable
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
+    database_ssl_mode: str = "require"
 
     # Google Earth Engine
     gee_service_account_email: Optional[str] = None
