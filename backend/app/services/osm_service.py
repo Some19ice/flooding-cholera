@@ -17,8 +17,13 @@ class OSMService:
 
     def fetch_health_facilities(self, state_name: str = "Cross River"):
         """
-        Fetch health facilities (hospitals, clinics) from OSM for a given state.
-        Updates the database.
+        Fetches health facilities from OpenStreetMap for the given state and inserts any newly discovered facilities into the database.
+        
+        Parameters:
+            state_name (str): Name of the administrative area to bound the Overpass query (defaults to "Cross River").
+        
+        Returns:
+            int: Number of facilities added to the database. Returns 0 if an error occurs while fetching or processing data.
         """
         # Query: Hospitals/Clinics in Cross River State
         query = f"""

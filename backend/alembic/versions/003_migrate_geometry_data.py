@@ -22,6 +22,11 @@ def upgrade() -> None:
     # Migrate LGA geometries from JSON text to PostGIS geometry
     # ST_GeomFromGeoJSON parses GeoJSON and creates geometry
     # ST_Multi ensures we always get a MULTIPOLYGON
+    """
+    Migrate geometry data from text/coordinates into PostGIS geometry columns for LGAs, Wards, and health facilities.
+    
+    Converts GeoJSON in `geometry_json` to MULTIPOLYGON geometries for `lgas.geometry` and `wards.geometry`, and creates POINT geometries for `health_facilities.location` from `longitude`/`latitude` with SRID 4326. Each update only modifies rows where the source data is present and the target geometry column is currently NULL.
+    """
     op.execute("""
         UPDATE lgas
         SET geometry = ST_Multi(ST_GeomFromGeoJSON(geometry_json))
@@ -45,6 +50,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Clear the PostGIS geometry columns (data can be regenerated from JSON/lat-lon)
+    """
+    Reverts the geometry migration by clearing PostGIS geometry and location columns.
+    
+    Sets lgas.geometry, wards.geometry, and health_facilities.location to NULL so stored geometries are removed (they can be regenerated from geometry_json or latitude/longitude).
+    """
     op.execute("UPDATE lgas SET geometry = NULL")
     op.execute("UPDATE wards SET geometry = NULL")
     op.execute("UPDATE health_facilities SET location = NULL")

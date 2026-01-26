@@ -317,7 +317,12 @@ export function useRefreshAll() {
   };
 }
 
-// Auto-refresh hook
+/**
+ * Trigger periodic invalidation of dashboard, risk scores, geojson, and alerts queries.
+ *
+ * @param intervalMs - Refresh interval in milliseconds; set to `null` to disable auto-refresh
+ * @returns An ISO 8601 timestamp string representing when the refresh ran (most recent run)
+ */
 export function useAutoRefresh(intervalMs: number | null) {
   const queryClient = useQueryClient();
 
@@ -340,6 +345,12 @@ export function useAutoRefresh(intervalMs: number | null) {
   });
 }
 
+/**
+ * Creates a React Query that fetches the satellite thumbnail URL for a given LGA.
+ *
+ * @param lgaId - The local government area identifier; when `null` the query is disabled.
+ * @returns The query result whose `data` (when available) is an object with a `url` string pointing to the thumbnail image. The query is disabled if `lgaId` is `null`.
+ */
 export function useSatelliteThumbnail(lgaId: number | null) {
   return useQuery({
     queryKey: lgaId ? queryKeys.satelliteThumbnail(lgaId) : ['satellite', 'thumbnail', 'null'],

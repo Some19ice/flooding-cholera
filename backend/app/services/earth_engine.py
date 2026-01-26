@@ -22,7 +22,12 @@ class EarthEngineService:
         self._timeout = settings.satellite_api_timeout
 
     def is_configured(self) -> bool:
-        """Check if GEE credentials are configured."""
+        """
+        Return whether Google Earth Engine credentials are configured.
+        
+        Returns:
+            bool: True if a JSON service account is provided or both a service account email and an existing private key file path are set, False otherwise.
+        """
         if settings.gee_service_account_json:
             return True
 
@@ -37,7 +42,14 @@ class EarthEngineService:
         return self._authenticated
 
     def authenticate(self) -> bool:
-        """Authenticate with Google Earth Engine."""
+        """
+        Initialize and authenticate the Google Earth Engine client using configured credentials.
+        
+        Prefers a JSON service account provided via settings.gee_service_account_json; if not present, uses the legacy service account email and private key path from settings. Sets the service as authenticated and stores the ee module reference on success.
+        
+        Returns:
+            bool: `True` if authentication succeeded, `False` otherwise.
+        """
         if not self.is_configured():
             logger.warning("GEE credentials not configured")
             return False
@@ -169,16 +181,15 @@ class EarthEngineService:
         end_date: date
     ) -> Optional[Dict[str, str]]:
         """
-        Get GEE MapID for visualizing SAR flood extent.
-        Uses Change Detection (After - Before) to identify flood water.
-
-        Args:
-            geometry: GeoJSON geometry
-            start_date: Start date
-            end_date: End date
-
+        Return a Google Earth Engine tile URL template and map identifier for visualizing SAR-derived flood extent detected by change detection.
+        
+        Parameters:
+        	geometry (Dict[str, Any]): GeoJSON geometry defining the area of interest.
+        	start_date (date): Start date of the analysis period.
+        	end_date (date): End date of the analysis period.
+        
         Returns:
-            Dict with 'url' (tile template) and 'token'
+        	result (Dict[str, str] | None): Dictionary with 'url' (tile URL template) and 'token' (map id) if a MapID was generated, `None` otherwise.
         """
         if not self._authenticated:
             if not self.authenticate():
@@ -252,16 +263,15 @@ class EarthEngineService:
         end_date: date
     ) -> Optional[str]:
         """
-        Get a static thumbnail URL for SAR flood visualization.
-        Shows the 'After' SAR image with detected water overlaid in blue.
-
-        Args:
-            geometry: GeoJSON geometry
-            start_date: Start date
-            end_date: End date
-
+        Generate a static thumbnail URL visualizing SAR change detection with detected water overlaid in blue.
+        
+        Parameters:
+            geometry (Dict[str, Any]): GeoJSON geometry defining the area of interest.
+            start_date (date): Start date for the "after" SAR period.
+            end_date (date): End date for the "after" SAR period.
+        
         Returns:
-            URL string for the thumbnail image
+            str or None: URL of the generated PNG thumbnail, or `None` if generation fails or data are unavailable.
         """
         if not self._authenticated:
             if not self.authenticate():
@@ -332,16 +342,16 @@ class EarthEngineService:
         end_date: date
     ) -> Optional[Dict[str, float]]:
         """
-        Calculate flood extent using Sentinel-1 SAR imagery (UN-SPIDER Methodology).
-        Uses Change Detection (After - Before) to identify flood water.
-
-        Args:
-            geometry: GeoJSON geometry for area of interest
-            start_date: Start date for "After Flood" image
-            end_date: End date for "After Flood" image
-
+        Estimate flood extent within a GeoJSON area using Sentinel-1 SAR change detection.
+        
+        Parameters:
+            geometry (dict): GeoJSON geometry describing the area of interest.
+            start_date (date): Start date for the "after" period used in change detection.
+            end_date (date): End date for the "after" period used in change detection.
+        
         Returns:
-            Dict with flood_extent_pct, water_pixels, total_pixels
+            dict: Dictionary with key `flood_extent_pct` (float) representing the percentage of the area detected as water.
+            Returns `None` on failure or when insufficient data is available.
         """
         if not self._authenticated:
             if not self.authenticate():
@@ -472,15 +482,24 @@ class EarthEngineService:
         end_date: date
     ) -> Optional[Dict[str, Any]]:
         """
-        Fetch all GEE data for an LGA and save to database.
-
-        Args:
-            lga_id: ID of the LGA
-            start_date: Start date
-            end_date: End date
-
+        Fetches Earth Engine products for a Local Government Area (LGA), persists an EnvironmentalData record, and returns the collected values.
+        
+        Persists a new EnvironmentalData row using the provided date range (recorded with observation_date equal to end_date). Uses SAR-derived extent when available, otherwise optical NDWI for flood extent determination.
+        
+        Parameters:
+            lga_id (int): Primary key of the LGA to query.
+            start_date (date): Start of the observation window.
+            end_date (date): End of the observation window; also used as the persisted observation_date.
+        
         Returns:
-            Dict with fetched data or None
+            dict: {
+                "lga_id": int,
+                "observation_date": str,  # ISO formatted end_date
+                "flood_data": Optional[Dict[str, float]],  # NDWI stats or None
+                "sar_data": Optional[Dict[str, float]],    # SAR flood extent stats or None
+                "lst_data": Optional[Dict[str, float]]     # Land surface temperature stats or None
+            }
+            or None if the operation fails or the LGA/geometry is invalid.
         """
         from app.database import SessionLocal
         from app.models import LGA, EnvironmentalData

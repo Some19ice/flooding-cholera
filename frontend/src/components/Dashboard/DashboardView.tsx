@@ -12,6 +12,17 @@ interface KPICardProps {
   subtitle?: string;
 }
 
+/**
+ * Render a styled KPI card showing a title, a prominent value, an icon badge, and an optional trend or subtitle.
+ *
+ * @param title - Text displayed as the card header above the value
+ * @param value - Main numeric or textual value shown prominently
+ * @param icon - Material symbol name rendered inside the top-right badge
+ * @param iconColor - Visual style for the icon badge; accepts 'primary', 'orange', or other (green)
+ * @param trend - Optional trend descriptor with `{ isPositive: boolean, value: string }`; when present, shows a colored trend indicator and value
+ * @param subtitle - Optional secondary text displayed when `trend` is not provided
+ * @returns A React element representing the KPI card
+ */
 function KPICard({ title, value, icon, iconColor, trend, subtitle }: KPICardProps) {
   const bgColor = iconColor === 'primary' ? 'bg-primary/10 text-primary'
     : iconColor === 'orange' ? 'bg-alert-orange/10 text-alert-orange'
@@ -41,6 +52,16 @@ function KPICard({ title, value, icon, iconColor, trend, subtitle }: KPICardProp
   );
 }
 
+/**
+ * Render a satellite imagery thumbnail for a local government area (LGA) with visual styling that reflects the provided risk level.
+ *
+ * Displays a loading spinner while imagery is being fetched and a placeholder message if imagery is unavailable or an error occurs. Shows the LGA name as an overlay and a pulsing risk badge whose color corresponds to `riskLevel`.
+ *
+ * @param lgaId - Identifier of the LGA used to fetch the satellite thumbnail
+ * @param name - Human-readable LGA name shown in the overlay label
+ * @param riskLevel - One of `'high' | 'medium' | 'low'`; controls badge and color styling
+ * @returns A JSX element containing the thumbnail card for the specified LGA
+ */
 function SatelliteThumbnail({ lgaId, name, riskLevel }: { lgaId: number, name: string, riskLevel: 'high' | 'medium' | 'low' }) {
   const { data, isLoading, error } = useSatelliteThumbnail(lgaId);
   
@@ -78,6 +99,13 @@ function SatelliteThumbnail({ lgaId, name, riskLevel }: { lgaId: number, name: s
   );
 }
 
+/**
+ * Render the Environmental Feed card showing top LGAs with satellite thumbnails.
+ *
+ * Derives a list of LGAs from risk scores (selecting the top 3 by score) and falls back to a static mock list when no data is available; renders a card with a "LIVE" badge and a SatelliteThumbnail for each selected LGA.
+ *
+ * @returns A JSX element containing the Environmental Feed card with the LIVE badge and satellite thumbnails for the selected LGAs.
+ */
 function SatelliteFeed() {
   const { data: riskScores } = useRiskScores();
   

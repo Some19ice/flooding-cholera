@@ -18,7 +18,14 @@ def get_facilities(db: Session = Depends(get_db)):
 
 @router.get("/geojson")
 def get_facilities_geojson(db: Session = Depends(get_db)):
-    """Get health facilities as GeoJSON FeatureCollection."""
+    """
+    Build a GeoJSON FeatureCollection of all health facilities.
+    
+    Each facility becomes a GeoJSON Feature whose geometry is taken from the facility's PostGIS `location` when available and convertible; if that is unavailable or conversion fails, geometry is constructed from `longitude` and `latitude`. Facilities lacking both a usable `location` and valid latitude/longitude are omitted.
+    
+    Returns:
+        dict: A GeoJSON FeatureCollection with a "features" list. Each feature is a dict with keys "type" ("Feature"), "geometry" (GeoJSON geometry), and "properties" containing `id`, `name`, `type`, and `lga_id`.
+    """
     facilities = db.query(HealthFacility).all()
 
     features = []

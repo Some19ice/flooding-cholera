@@ -9,7 +9,17 @@ settings = get_settings()
 
 
 def get_database_url() -> str:
-    """Get the database URL with validation."""
+    """
+    Retrieve and validate the configured database URL.
+    
+    Verifies that the application setting `database_url` specifies a PostgreSQL connection string.
+    
+    Returns:
+        database_url (str): The validated PostgreSQL database URL.
+    
+    Raises:
+        ValueError: If the configured `database_url` does not start with "postgresql".
+    """
     database_url = settings.database_url
 
     if not database_url.startswith("postgresql"):
