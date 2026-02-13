@@ -1,5 +1,4 @@
 """Database connection and session management."""
-import os
 import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
@@ -10,15 +9,14 @@ settings = get_settings()
 
 
 def get_database_url() -> str:
-    """Get the database URL, with SQLite fallback for development."""
+    """Get the database URL with validation."""
     database_url = settings.database_url
 
-    # Use SQLite if configured or if PostgreSQL is not available
-    if database_url.startswith("postgresql") and settings.use_sqlite_fallback:
-        sqlite_path = os.path.join(os.path.dirname(__file__), "..", "data", "cholera.db")
-        os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
-        database_url = f"sqlite:///{os.path.abspath(sqlite_path)}"
-        logger.info(f"Using SQLite database: {sqlite_path}")
+    if not database_url.startswith("postgresql"):
+        raise ValueError(
+            "DATABASE_URL must be a PostgreSQL connection string. "
+            "SQLite is no longer supported. Please configure a PostgreSQL database."
+        )
 
     return database_url
 
@@ -28,7 +26,9 @@ database_url = get_database_url()
 engine = create_engine(
     database_url,
     echo=settings.debug,
-    connect_args={"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    pool_size=settings.database_pool_size,
+    max_overflow=settings.database_max_overflow,
+    connect_args={"sslmode": settings.database_ssl_mode}
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

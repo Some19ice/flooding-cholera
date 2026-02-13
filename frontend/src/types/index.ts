@@ -178,3 +178,16 @@ export interface FilterState {
   showLowRisk: boolean;
   dateRange: DateRange;
 }
+
+export interface WeeklySummary {
+  weeks: number;
+  start_date: string;
+  end_date: string;
+  weekly_data: Array<{
+    week: string;
+    cases: number;
+    deaths: number;
+    flood_extent: number;
+    rainfall: number;
+  }>;
+}

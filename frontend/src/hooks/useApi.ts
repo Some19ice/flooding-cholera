@@ -10,6 +10,7 @@ import type {
   SatelliteStatus,
   SatelliteData,
   Alert,
+  WeeklySummary,
 } from '../types';
 
 const api = axios.create({
@@ -29,6 +30,7 @@ export const queryKeys = {
   riskScores: ['riskScores'] as const,
   satelliteStatus: ['satellite', 'status'] as const,
   satelliteLatest: ['satellite', 'latest'] as const,
+  satelliteThumbnail: (id: number) => ['satellite', 'thumbnail', id] as const,
   alerts: ['alerts'] as const,
 };
 
@@ -74,6 +76,11 @@ export const apiService = {
     return response.data;
   },
 
+  getWeeklySummary: async (weeks: number = 12): Promise<WeeklySummary> => {
+    const response = await api.get('/analytics/summary/weekly', { params: { weeks } });
+    return response.data;
+  },
+
   // Risk calculation
   calculateRisks: async (): Promise<{ success: boolean; results: unknown[] }> => {
     const response = await api.post('/risk-scores/calculate');
@@ -107,6 +114,11 @@ export const apiService = {
 
   getLatestSatelliteData: async (): Promise<SatelliteData[]> => {
     const response = await api.get('/satellite/latest');
+    return response.data;
+  },
+
+  getSatelliteThumbnail: async (lgaId: number): Promise<{ url: string }> => {
+    const response = await api.get(`/satellite/thumbnail/${lgaId}`);
     return response.data;
   },
 
@@ -227,6 +239,14 @@ export function useRiskScores() {
   });
 }
 
+export function useWeeklySummary(weeks: number = 12) {
+  return useQuery({
+    queryKey: ['analytics', 'summary', 'weekly', weeks],
+    queryFn: () => apiService.getWeeklySummary(weeks),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useSatelliteStatus() {
   return useQuery({
     queryKey: queryKeys.satelliteStatus,
@@ -331,5 +351,15 @@ export function useAutoRefresh(intervalMs: number | null) {
     enabled: !!intervalMs,
     refetchInterval: intervalMs || false,
     staleTime: 0,
+  });
+}
+
+export function useSatelliteThumbnail(lgaId: number | null) {
+  return useQuery({
+    queryKey: lgaId ? queryKeys.satelliteThumbnail(lgaId) : ['satellite', 'thumbnail', 'null'],
+    queryFn: () => apiService.getSatelliteThumbnail(lgaId!),
+    enabled: !!lgaId,
+    retry: false,
+    staleTime: 60 * 60 * 1000,
   });
 }

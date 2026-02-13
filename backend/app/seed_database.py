@@ -21,9 +21,20 @@ import random
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from geoalchemy2.shape import from_shape
+from shapely.geometry import shape, MultiPolygon
+
 from app.database import engine, SessionLocal, Base, init_db
 from app.models import LGA, CaseReport, EnvironmentalData, RiskScore, Alert
 from app.services.risk_calculator import RiskCalculator
+
+
+def to_postgis_multipolygon(geometry: dict):
+    """Convert GeoJSON geometry to PostGIS MultiPolygon format."""
+    geom_shape = shape(geometry)
+    if geom_shape.geom_type == 'Polygon':
+        geom_shape = MultiPolygon([geom_shape])
+    return from_shape(geom_shape, srid=4326)
 
 
 def create_tables():
@@ -84,6 +95,10 @@ def seed_lgas():
                 print(f"  LGA {props['name']} already exists, skipping...")
                 continue
 
+            # Convert GeoJSON geometry to PostGIS format (ensure MultiPolygon)
+            # Convert GeoJSON geometry to PostGIS format (ensure MultiPolygon)
+            postgis_geom = to_postgis_multipolygon(geometry)
+
             lga = LGA(
                 name=props["name"],
                 code=props["code"],
@@ -94,7 +109,7 @@ def seed_lgas():
                 water_coverage_pct=random.uniform(40, 80),
                 sanitation_coverage_pct=random.uniform(35, 70),
                 health_facilities_count=random.randint(3, 15),
-                geometry_json=json.dumps(geometry)
+                geometry=postgis_geom
             )
 
             db.add(lga)
@@ -152,6 +167,10 @@ def seed_lgas_hardcoded(db):
             ]]
         }
 
+        # Convert GeoJSON geometry to PostGIS format (ensure MultiPolygon)
+        # Convert GeoJSON geometry to PostGIS format (ensure MultiPolygon)
+        postgis_geom = to_postgis_multipolygon(geometry)
+
         lga = LGA(
             name=name,
             code=code,
@@ -162,7 +181,7 @@ def seed_lgas_hardcoded(db):
             water_coverage_pct=random.uniform(40, 80),
             sanitation_coverage_pct=random.uniform(35, 70),
             health_facilities_count=random.randint(3, 15),
-            geometry_json=json.dumps(geometry)
+            geometry=postgis_geom
         )
         db.add(lga)
         print(f"  Added LGA: {name}")

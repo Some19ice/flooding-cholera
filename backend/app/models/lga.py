@@ -1,7 +1,8 @@
 """LGA (Local Government Area) and Ward models."""
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
+from geoalchemy2 import Geometry
 from app.database import Base
 
 
@@ -17,8 +18,8 @@ class LGA(Base):
     area_sq_km = Column(Float, nullable=True)
     headquarters = Column(String(100), nullable=True)
 
-    # Store geometry as GeoJSON text for SQLite compatibility
-    geometry_json = Column(Text, nullable=True)
+    # PostGIS geometry column
+    geometry = Column(Geometry('MULTIPOLYGON', srid=4326), nullable=True)
 
     # Centroid for quick lookups
     centroid_lat = Column(Float, nullable=True)
@@ -54,8 +55,8 @@ class Ward(Base):
     code = Column(String(20), nullable=True)
     population = Column(Integer, nullable=True)
 
-    # Store geometry as GeoJSON text for SQLite compatibility
-    geometry_json = Column(Text, nullable=True)
+    # PostGIS geometry column
+    geometry = Column(Geometry('MULTIPOLYGON', srid=4326), nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

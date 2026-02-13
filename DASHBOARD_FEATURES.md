@@ -42,7 +42,6 @@ A specialized view for detailed environmental analysis:
 *   **Automated Alerts:** The system generates alerts for high-risk conditions (e.g., "High Flood Risk" or "Case Spike").
 *   **Data Upload:** Facilities for uploading new case reports and environmental data csv files.
 *   **Export:** Capability to export reports and charts for offline analysis.
-
 ## Recent Additions
 
 ### Health Facilities Layer

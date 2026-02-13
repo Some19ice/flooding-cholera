@@ -4,13 +4,16 @@ from datetime import date, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
 from sqlalchemy.orm import Session
+from geoalchemy2.shape import to_shape
+from geoalchemy2.exc import ArgumentError
+from shapely.geometry import mapping
+from shapely.errors import ShapelyError
 
 from app.database import get_db
 from app.models import LGA, EnvironmentalData
 from app.services.earth_engine import EarthEngineService
 from app.services.nasa_gpm import NASAGPMService
 from app.rate_limiter import limiter
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -41,18 +44,19 @@ def get_flood_tiles(
         HTTPException: If GEE is not configured, LGA not found, or no data available.
     """
     gee_service = EarthEngineService()
-    
+
     if not gee_service.is_configured():
         raise HTTPException(status_code=503, detail="GEE not configured")
-        
+
     lga = db.query(LGA).filter(LGA.id == lga_id).first()
-    if not lga or not lga.geometry_json:
+    if not lga or lga.geometry is None:
         raise HTTPException(status_code=404, detail="LGA or geometry not found")
-        
+
     try:
-        geometry = json.loads(lga.geometry_json)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Invalid LGA geometry")
+        geometry = mapping(to_shape(lga.geometry))
+    except (ShapelyError, ArgumentError, ValueError) as err:
+        logger.exception("Invalid LGA geometry", extra={"lga_id": lga_id})
+        raise HTTPException(status_code=500, detail="Invalid LGA geometry") from err
 
     # Determine date range
     if date_str:
@@ -62,18 +66,69 @@ def get_flood_tiles(
             raise HTTPException(status_code=400, detail="Invalid date format")
     else:
         target_date = date.today()
-        
-    # Window: 12 days (Sentinel-1 revisit is 6-12 days)
-    # We look back 12 days from target_date to find an image
-    start_date = target_date - timedelta(days=12)
+
+    # Window: 30 days (Sentinel-1 revisit is 6-12 days, but coverage varies)
+    start_date = target_date - timedelta(days=30)
     end_date = target_date
 
     map_data = gee_service.get_sar_flood_mapid(geometry, start_date, end_date)
-    
+
     if not map_data:
         raise HTTPException(status_code=404, detail="No SAR data found for this period")
-        
+
     return map_data
+
+
+@router.get("/thumbnail/{lga_id}")
+@limiter.limit("30/minute")
+def get_satellite_thumbnail(
+    request: Request,
+    lga_id: int,
+    date_str: Optional[str] = Query(None, alias="date"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get a static thumbnail URL for satellite imagery of an LGA.
+    """
+    gee_service = EarthEngineService()
+
+    if not gee_service.is_configured():
+        raise HTTPException(status_code=503, detail="GEE not configured")
+
+    lga = db.query(LGA).filter(LGA.id == lga_id).first()
+    if not lga or lga.geometry is None:
+        raise HTTPException(status_code=404, detail="LGA or geometry not found")
+
+    try:
+        geometry = mapping(to_shape(lga.geometry))
+    except (ShapelyError, ArgumentError, ValueError) as err:
+        logger.exception("Invalid LGA geometry", extra={"lga_id": lga_id})
+        raise HTTPException(status_code=500, detail="Invalid LGA geometry") from err
+
+    # Determine date range
+    if date_str:
+        try:
+            target_date = date.fromisoformat(date_str)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format")
+    else:
+        target_date = date.today()
+
+    # Window: 30 days
+    start_date = target_date - timedelta(days=30)
+    end_date = target_date
+
+    url = gee_service.get_sar_flood_thumbnail(geometry, start_date, end_date)
+
+    if not url:
+        # Fallback for demo/dev if real imagery unavailable
+        # Return a static placeholder or null to let frontend handle "No Imagery" state gracefully
+        # For now, we return None which 404s, but we'll log it.
+        # Ideally, we could return a specific "unavailable" placeholder URL if we had one.
+        logger.warning(f"No MAX-NDWI imagery found for LGA {lga_id} in {start_date} to {end_date}")
+        raise HTTPException(status_code=404, detail="No imagery found for this period")
+
+    return {"url": url}
 
 
 @router.get("/status")

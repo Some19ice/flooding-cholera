@@ -17,7 +17,9 @@ shapely==2.0.2
 geojson==3.1.0
 
 # Satellite data
-earthengine-api==0.1.390
+earthengine-api==1.7.10
+google-auth==2.47.0
+google-auth-httplib2==0.3.0
 h5py==3.10.0
 netCDF4==1.6.5
 requests==2.31.0

@@ -4,7 +4,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-import json
+from geoalchemy2.shape import to_shape
+from shapely.geometry import mapping
 
 from app.database import get_db
 from app.models import LGA, RiskScore, CaseReport, EnvironmentalData
@@ -51,7 +52,7 @@ def list_lgas(
 @router.get("/geojson", response_model=GeoJSONFeatureCollection)
 @limiter.limit("30/minute")
 def get_lgas_geojson(
-    request: Request, 
+    request: Request,
     date_str: Optional[str] = Query(None, alias="date"),
     db: Session = Depends(get_db)
 ):
@@ -70,7 +71,7 @@ def get_lgas_geojson(
     if target_date:
         # Get scores exactly on the target date
         scores = db.query(RiskScore).filter(RiskScore.score_date == target_date).all()
-        
+
         # If no scores found for exact date, try finding nearest prior scores (up to 7 days back)
         if not scores:
             # Use subquery pattern for database compatibility (works on both PostgreSQL and SQLite)
@@ -139,12 +140,12 @@ def get_lgas_geojson(
             "recent_deaths": risk_score.recent_deaths if risk_score else 0
         }
 
-        # Parse geometry from JSON text field
+        # Convert PostGIS geometry to GeoJSON
         geometry = None
-        if lga.geometry_json:
+        if lga.geometry is not None:
             try:
-                geometry = json.loads(lga.geometry_json)
-            except json.JSONDecodeError:
+                geometry = mapping(to_shape(lga.geometry))
+            except Exception:
                 pass
 
         features.append(GeoJSONFeature(
@@ -228,11 +229,11 @@ def get_lga(request: Request, lga_id: int, db: Session = Depends(get_db)):
 
     response = LGAWithGeometry.model_validate(lga)
 
-    # Parse geometry from JSON text field
-    if lga.geometry_json:
+    # Convert PostGIS geometry to GeoJSON
+    if lga.geometry is not None:
         try:
-            response.geometry = json.loads(lga.geometry_json)
-        except json.JSONDecodeError:
+            response.geometry = mapping(to_shape(lga.geometry))
+        except Exception:
             response.geometry = None
 
     return response

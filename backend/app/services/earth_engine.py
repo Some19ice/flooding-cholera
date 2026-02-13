@@ -1,8 +1,11 @@
 """Google Earth Engine integration service."""
 import os
+import json
 import logging
 from datetime import date, timedelta
 from typing import Optional, Dict, Any, List
+
+from google.oauth2.service_account import Credentials
 
 from app.config import get_settings
 
@@ -20,6 +23,9 @@ class EarthEngineService:
 
     def is_configured(self) -> bool:
         """Check if GEE credentials are configured."""
+        if settings.gee_service_account_json:
+            return True
+
         return bool(
             settings.gee_service_account_email and
             settings.gee_private_key_path and
@@ -38,17 +44,46 @@ class EarthEngineService:
 
         try:
             import ee
-            credentials = ee.ServiceAccountCredentials(
-                settings.gee_service_account_email,
-                settings.gee_private_key_path
+            from google.oauth2 import service_account
+
+            if settings.gee_service_account_json:
+                try:
+                    service_account_info = json.loads(settings.gee_service_account_json)
+                    credentials = service_account.Credentials.from_service_account_info(
+                        service_account_info,
+                        scopes=['https://www.googleapis.com/auth/earthengine']
+                    )
+                    ee.Initialize(credentials=credentials)
+                    self._authenticated = True
+                    self._ee = ee
+                    logger.info("Successfully authenticated with Google Earth Engine using JSON env var")
+                    return True
+                except json.JSONDecodeError:
+                    logger.exception("Failed to parse GEE_SERVICE_ACCOUNT_JSON")
+                    return False
+                except Exception:
+                    logger.exception("Error authenticating with JSON env var")
+                    return False
+
+            # Authenticate using key file
+            credentials = service_account.Credentials.from_service_account_file(
+                settings.gee_private_key_path,
+                scopes=['https://www.googleapis.com/auth/earthengine']
             )
-            ee.Initialize(credentials)
+            
+            # Extract project from email if possible, or let GEE infer from creds
+            project = settings.gee_service_account_email.split('@')[0] if settings.gee_service_account_email else None
+            
+            ee.Initialize(
+                credentials=credentials,
+                project=project
+            )
             self._authenticated = True
             self._ee = ee
             logger.info("Successfully authenticated with Google Earth Engine")
             return True
-        except Exception as e:
-            logger.error(f"Failed to authenticate with GEE: {e}")
+        except Exception:
+            logger.exception("Failed to authenticate with GEE")
             return False
 
     def get_flood_index(
@@ -169,7 +204,7 @@ class EarthEngineService:
                 .select(['VH'])
 
             after_collection = collection.filterDate(start_date.isoformat(), end_date.isoformat())
-            
+
             # Before Flood: 30 days prior
             before_start = start_date - timedelta(days=30)
             before_collection = collection.filterDate(before_start.isoformat(), start_date.isoformat())
@@ -189,12 +224,12 @@ class EarthEngineService:
             # Note: Sentinel-1 GRD data is already in dB scale, so we compute difference directly
             # Flooded areas show significant decrease in backscatter (negative difference)
             difference = after_filtered.subtract(before_filtered)
-            
+
             # Thresholding for change detection
             # A drop of > 3dB typically indicates water appearance
             change_threshold = -3.0
             water_mask = difference.lt(change_threshold)
-            
+
             # Mask the water layer so only water pixels are visible (0 is transparent)
             water_layer = water_mask.selfMask()
 
@@ -207,7 +242,7 @@ class EarthEngineService:
 
             # Get MapID
             map_id = water_layer.getMapId(vis_params)
-            
+
             return {
                 "url": map_id['tile_fetcher'].url_format,
                 "token": map_id['mapid'] # Not strictly needed with url_format usually
@@ -215,6 +250,86 @@ class EarthEngineService:
 
         except Exception as e:
             logger.error(f"Error generating MapID: {e}")
+            return None
+
+    def get_sar_flood_thumbnail(
+        self,
+        geometry: Dict[str, Any],
+        start_date: date,
+        end_date: date
+    ) -> Optional[str]:
+        """
+        Get a static thumbnail URL for SAR flood visualization.
+        Shows the 'After' SAR image with detected water overlaid in blue.
+
+        Args:
+            geometry: GeoJSON geometry
+            start_date: Start date
+            end_date: End date
+
+        Returns:
+            URL string for the thumbnail image
+        """
+        if not self._authenticated:
+            if not self.authenticate():
+                return None
+
+        try:
+            ee = self._ee
+            aoi = ee.Geometry(geometry)
+
+            # 1. Define Collections
+            collection = ee.ImageCollection('COPERNICUS/S1_GRD') \
+                .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+                .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH')) \
+                .filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING')) \
+                .filterBounds(aoi) \
+                .select(['VH'])
+
+            after_collection = collection.filterDate(start_date.isoformat(), end_date.isoformat())
+
+            # Before Flood: 30 days prior
+            before_start = start_date - timedelta(days=30)
+            before_collection = collection.filterDate(before_start.isoformat(), start_date.isoformat())
+
+            if after_collection.size().getInfo() == 0 or before_collection.size().getInfo() == 0:
+                return None
+
+            before = before_collection.mosaic().clip(aoi)
+            after = after_collection.mosaic().clip(aoi)
+
+            # Preprocessing (Speckle Filtering)
+            smoothing_radius = 50
+            before_filtered = before.focal_mean(smoothing_radius, 'circle', 'meters')
+            after_filtered = after.focal_mean(smoothing_radius, 'circle', 'meters')
+
+            # Change Detection
+            difference = after_filtered.subtract(before_filtered)
+            change_threshold = -3.0
+            water_mask = difference.lt(change_threshold)
+
+            # Create Visualization
+            # Background: 'After' image (SAR backscatter)
+            # VH backscatter typically ranges from -30 to 0 dB
+            bg_vis = after_filtered.visualize(min=-25, max=0, palette=['black', 'white'])
+
+            # Overlay: Detected Water (Blue)
+            water_vis = water_mask.selfMask().visualize(palette=['0000FF'])
+
+            # Composite
+            composite = bg_vis.blend(water_vis)
+
+            # Generate URL
+            url = composite.getThumbURL({
+                'dimensions': 400,
+                'region': aoi,
+                'format': 'png'
+            })
+
+            return url
+
+        except Exception:
+            logger.exception("Error generating thumbnail")
             return None
 
     def get_sar_flood_extent(
@@ -253,7 +368,7 @@ class EarthEngineService:
 
             # 2. Select Images
             after_collection = collection.filterDate(start_date.isoformat(), end_date.isoformat())
-            
+
             before_start = start_date - timedelta(days=30)
             before_collection = collection.filterDate(before_start.isoformat(), start_date.isoformat())
 
@@ -273,7 +388,7 @@ class EarthEngineService:
             # 4. Change Detection
             # Note: Sentinel-1 GRD data is already in dB scale, so we compute difference directly
             difference = after_filtered.subtract(before_filtered)
-            
+
             # Thresholding: Significant drop in backscatter (< -3dB)
             change_threshold = -3.0
             water_mask = difference.lt(change_threshold)
@@ -376,26 +491,27 @@ class EarthEngineService:
         """
         from app.database import SessionLocal
         from app.models import LGA, EnvironmentalData
-        import json
+        from geoalchemy2.shape import to_shape
+        from shapely.geometry import mapping
 
         db = SessionLocal()
         try:
             # Get LGA geometry
             lga = db.query(LGA).filter(LGA.id == lga_id).first()
 
-            if not lga or not lga.geometry_json:
+            if not lga or lga.geometry is None:
                 logger.warning(f"LGA {lga_id} not found or has no geometry")
                 return None
 
             try:
-                geometry = json.loads(lga.geometry_json)
-            except json.JSONDecodeError:
-                logger.error(f"Invalid geometry JSON for LGA {lga_id}")
+                geometry = mapping(to_shape(lga.geometry))
+            except Exception:
+                logger.exception("Invalid geometry for LGA %s", lga_id)
                 return None
 
             # Fetch flood index (Sentinel-2 Optical)
             flood_data = self.get_flood_index(geometry, start_date, end_date)
-            
+
             # Fetch SAR flood extent (Sentinel-1 Radar)
             sar_data = self.get_sar_flood_extent(geometry, start_date, end_date)
 
